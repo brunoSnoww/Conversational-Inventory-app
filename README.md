@@ -42,11 +42,6 @@ brew install goose
 
 ### 1. Configure environment
 
-```bash
-cd inventory
-cp .env.example .env
-```
-
 Edit `.env` — **required for chat**:
 
 ```env
@@ -56,16 +51,10 @@ INVENTORY_AGENT_MODEL=openrouter:deepseek/deepseek-v4-flash
 
 Use `OPENROUTER_API_KEY`, not `OPENAI_API_KEY` (OpenRouter keys start with `sk-or-`).
 
-Frontend defaults work locally; optional:
-
-```bash
-cp frontend/.env.example frontend/.env
-```
-
 ### 2. Start backend services
 
 ```bash
-docker compose build api    # first time only
+docker compose build api   
 docker compose up -d
 ```
 
