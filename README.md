@@ -1,7 +1,8 @@
 # Conversational demo
 
-https://github.com/user-attachments/assets/f1909225-09c3-4014-9204-2068fa1b6e68
+https://github.com/user-attachments/assets/174e8957-ae7c-495c-b709-e7a712fe1789
 
+Demo on how to register,purchase,sell and get info on inventory
 
 # Inventory
 
