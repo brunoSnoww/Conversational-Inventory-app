@@ -1,0 +1,2 @@
+pydantic-ai[openrouter]>=0.0.49
+simpleeval>=0.9.13

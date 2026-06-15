@@ -1,0 +1,5 @@
+-- Deprecated: use Goose seed migration instead.
+--   ./scripts/migrate.sh up
+-- Migration: migrations/20250612000004_seed_demo_data.sql
+--
+-- Demo login: demo@inventory.local / password123

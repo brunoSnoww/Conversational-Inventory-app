@@ -1,0 +1,5 @@
+# API (install first)
+-r requirements-api.txt
+
+# Chat agent (optional until /api/chat/)
+-r requirements-ai.txt
