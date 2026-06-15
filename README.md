@@ -1,3 +1,8 @@
+# Conversational demo
+
+https://github.com/user-attachments/assets/f1909225-09c3-4014-9204-2068fa1b6e68
+
+
 # Inventory
 
 Conversational inventory management for F&B/CPG brands. Chat with an LLM agent
