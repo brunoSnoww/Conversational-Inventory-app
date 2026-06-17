@@ -9,6 +9,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import LoginSerializer, RegisterSerializer
 
 
+def _auth_tokens(user) -> dict:
+    refresh = RefreshToken.for_user(user)
+    return {
+        "user_id": str(user.user_id),
+        "email": user.email,
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+    }
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -21,16 +31,7 @@ class RegisterView(APIView):
             user = serializer.save()
         except IntegrityError:
             return Response({"detail": "Email already registered."}, status=status.HTTP_400_BAD_REQUEST)
-        refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "user_id": str(user.user_id),
-                "email": user.email,
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(_auth_tokens(user), status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
@@ -40,12 +41,4 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
-        refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "user_id": str(user.user_id),
-                "email": user.email,
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-            }
-        )
+        return Response(_auth_tokens(user))

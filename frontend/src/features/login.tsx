@@ -1,58 +1,123 @@
-import { FormEvent, useState } from 'react';
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Button, PasswordInput, Stack, TextInput } from '@mantine/core';
+import { Box, Button, PasswordInput, SegmentedControl, Stack, TextInput } from '@mantine/core';
+import { hasLength, isEmail, isNotEmpty, matchesField, useForm } from '@mantine/form';
 
+import { shellTextureStyle } from '../app/theme';
 import { useAuth } from '../auth/AuthContext';
 import { routes } from '../routes';
-import { ErrorText, Page } from './ui';
+import { ErrorText, Page, friendlyError } from './ui';
+
+type AuthMode = 'signin' | 'signup';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('demo@inventory.local');
-  const [password, setPassword] = useState('password123');
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      await login(email, password);
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-      navigate(from ?? routes.dashboard, { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
-      setLoading(false);
-    }
+  const signInForm = useForm({
+    initialValues: {
+      email: 'demo@inventory.local',
+      password: 'KaizntreeDemo1!',
+    },
+    validate: {
+      email: isEmail('Invalid email'),
+      password: isNotEmpty('Password is required'),
+    },
+  });
+
+  const signUpForm = useForm({
+    initialValues: {
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
+    validate: {
+      email: isEmail('Invalid email'),
+      password: hasLength({ min: 8 }, 'Password must be at least 8 characters'),
+      confirmPassword: matchesField('password', 'Passwords do not match'),
+    },
+  });
+
+  async function afterAuth() {
+    const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+    navigate(from ?? routes.dashboard, { replace: true });
   }
 
   return (
-    <Page title="Sign in" narrow>
-      <form onSubmit={onSubmit}>
-        <Stack gap="md">
-          <TextInput
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
-            required
-          />
-          <PasswordInput
-            label="Password"
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-            required
-          />
-          {error && <ErrorText>{error}</ErrorText>}
-          <Button type="submit" loading={loading}>
-            Sign in
-          </Button>
-        </Stack>
-      </form>
-    </Page>
+    <Box mih="100vh" p="md" style={shellTextureStyle}>
+      <Page title={mode === 'signin' ? 'Sign in' : 'Create account'} narrow>
+        <SegmentedControl
+          fullWidth
+          value={mode}
+          onChange={(value) => {
+            setMode(value as AuthMode);
+            setError(null);
+          }}
+          data={[
+            { label: 'Sign in', value: 'signin' },
+            { label: 'Create account', value: 'signup' },
+          ]}
+          mb="md"
+        />
+
+        {mode === 'signin' ? (
+          <form
+            onSubmit={signInForm.onSubmit(async (values) => {
+              setLoading(true);
+              setError(null);
+              try {
+                await login(values.email, values.password);
+                await afterAuth();
+              } catch (err) {
+                setError(friendlyError(err instanceof Error ? err.message : 'Login failed'));
+              } finally {
+                setLoading(false);
+              }
+            })}
+          >
+            <Stack gap="md">
+              <TextInput label="Email" type="email" {...signInForm.getInputProps('email')} />
+              <PasswordInput label="Password" {...signInForm.getInputProps('password')} />
+              {error && <ErrorText>{error}</ErrorText>}
+              <Button type="submit" loading={loading}>
+                Sign in
+              </Button>
+            </Stack>
+          </form>
+        ) : (
+          <form
+            onSubmit={signUpForm.onSubmit(async (values) => {
+              setLoading(true);
+              setError(null);
+              try {
+                await register(values.email, values.password);
+                await afterAuth();
+              } catch (err) {
+                setError(friendlyError(err instanceof Error ? err.message : 'Registration failed'));
+              } finally {
+                setLoading(false);
+              }
+            })}
+          >
+            <Stack gap="md">
+              <TextInput label="Email" type="email" {...signUpForm.getInputProps('email')} />
+              <PasswordInput label="Password" {...signUpForm.getInputProps('password')} />
+              <PasswordInput
+                label="Confirm password"
+                {...signUpForm.getInputProps('confirmPassword')}
+              />
+              {error && <ErrorText>{error}</ErrorText>}
+              <Button type="submit" loading={loading}>
+                Create account
+              </Button>
+            </Stack>
+          </form>
+        )}
+      </Page>
+    </Box>
   );
 }

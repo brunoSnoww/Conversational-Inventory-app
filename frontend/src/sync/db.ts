@@ -57,11 +57,9 @@ export async function initPowerSync(
     return initPromise;
   }
 
-  const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-
   initPromise = (async () => {
     setChatCollection(null);
-    const connector = new InventoryConnector(apiBaseUrl, getAccessToken);
+    const connector = new InventoryConnector(getAccessToken);
     const instance = new PowerSyncDatabase({
       schema: AppSchema,
       database: { dbFilename: dbFilename(userId) },

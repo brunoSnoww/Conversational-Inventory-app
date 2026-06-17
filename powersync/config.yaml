@@ -16,7 +16,11 @@ storage:
 port: 2000
 
 client_auth:
-  audience: ['http://localhost:2000']
+  audience:
+    - 'http://localhost:2000'
+    - 'https://canine-scrambled-reseller.ngrok-free.dev'
+
+
   jwks:
     keys:
       - kty: "oct"

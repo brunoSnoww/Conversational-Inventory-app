@@ -50,10 +50,6 @@ export function InventoryPowerSyncProvider({ enabled, accessToken, userId, child
           return;
         }
         setDatabase(db);
-        await db.waitForFirstSync();
-        if (cancelled) {
-          return;
-        }
         setStatus('ready');
       } catch (err) {
         if (!cancelled) {

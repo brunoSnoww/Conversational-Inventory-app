@@ -5,6 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+DEMO_EMAIL="demo@inventory.local"
+DEMO_PASSWORD="KaizntreeDemo1!"
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found"
   exit 1
@@ -30,14 +33,30 @@ echo "Running migrations..."
 echo "Starting full stack..."
 docker compose up -d
 
-cat <<'EOF'
+echo "Waiting for API..."
+for _ in $(seq 1 45); do
+  if docker compose exec -T api python manage.py shell -c "print('ok')" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+echo "Setting demo user password..."
+docker compose exec -T api python manage.py shell -c "
+from accounts.models import AppUser
+u = AppUser.objects.get(email='${DEMO_EMAIL}')
+u.set_password('${DEMO_PASSWORD}')
+u.save(update_fields=['password'])
+"
+
+cat <<EOF
 
 Fresh database ready.
 
-Login: demo@inventory.local / password123
+Login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}
 
 Seed snapshot:
-  A      — Product A (sold out, $900 profit on dashboard)
+  A      — Product A (sold out, \$900 profit on dashboard)
   CB-01  — Craft Beer IPA 12oz (400 units) — chat PO demo target
   OL-01  — Olive Oil EVOO 750mL (24 units)
 

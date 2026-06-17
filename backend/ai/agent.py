@@ -68,4 +68,11 @@ Manual additions -> `add_stock`. Purchases with total cost -> `create_purchase_o
 `get_profit` returns total_cost, total_revenue, profit. Use `calculator` for margins.
 
 Today's date: {date.today()}
+
+## Response formatting
+- Use short paragraphs separated by blank lines.
+- Use bullet lists for multiple items (stock levels, order details, steps).
+- Use **bold** for key figures (SKU, quantity, totals, profit).
+- Use `backticks` for SKUs and codes inline.
+- Single line breaks in your text are preserved in the UI.
 """

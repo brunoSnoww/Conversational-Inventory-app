@@ -14,6 +14,7 @@ from services import inventory as svc
 
 from ..deps import Deps
 from ..guardrails import sanitize_user_text
+from ..idempotency import tool_guid
 
 ProductUnitLiteral = Literal[
     ProductUnit.KG, ProductUnit.G, ProductUnit.L, ProductUnit.ML, ProductUnit.UNIT,
@@ -54,10 +55,14 @@ async def add_stock(ctx: RunContext[Deps], sku: str, quantity: float, unit_cost:
 
 async def create_purchase_order(ctx: RunContext[Deps], sku: str, quantity: float, total_cost: float) -> str:
     """Create a purchase order. Increments stock. total_cost is for the whole order."""
+    qty = _dec(quantity, "quantity")
+    cost = _dec(total_cost, "total_cost")
+    order_guid = tool_guid(
+        ctx.deps.chat_message_id, "create_purchase_order", sku=sku, quantity=qty, total_cost=cost,
+    ) or uuid.uuid4()
     try:
         r = await sync_to_async(svc.create_purchase_order_sync)(
-            ctx.deps.user_id, sku=sku, quantity=_dec(quantity, "quantity"),
-            total_cost=_dec(total_cost, "total_cost"), guid=uuid.uuid4(),
+            ctx.deps.user_id, sku=sku, quantity=qty, total_cost=cost, guid=order_guid,
         )
     except (svc.UnknownProduct, svc.InventoryError) as e:
         return str(e)
@@ -69,10 +74,14 @@ async def create_purchase_order(ctx: RunContext[Deps], sku: str, quantity: float
 
 async def record_sale(ctx: RunContext[Deps], sku: str, quantity: float, unit_price: float) -> str:
     """Record a sale. Decrements stock. unit_price is per unit."""
+    qty = _dec(quantity, "quantity")
+    price = _dec(unit_price, "unit_price")
+    order_guid = tool_guid(
+        ctx.deps.chat_message_id, "record_sale", sku=sku, quantity=qty, unit_price=price,
+    ) or uuid.uuid4()
     try:
         r = await sync_to_async(svc.record_sale_sync)(
-            ctx.deps.user_id, sku=sku, quantity=_dec(quantity, "quantity"),
-            unit_price=_dec(unit_price, "unit_price"), guid=uuid.uuid4(),
+            ctx.deps.user_id, sku=sku, quantity=qty, unit_price=price, guid=order_guid,
         )
     except (svc.UnknownProduct, svc.InsufficientStock, svc.InventoryError) as e:
         return str(e)

@@ -5,6 +5,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from inventory_api.http import run_inventory, stock_movement_from_row
 from inventory_api.models import Product, ProductFinancialsView, ProductStockView, PurchaseOrder, SalesOrder
 from inventory_api.serializers import (
     FinancialsSerializer,
@@ -47,10 +48,11 @@ class ProductViewSet(viewsets.ViewSet):
     def create(self, request):
         ser = ProductWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        try:
-            result = svc.register_product_sync(request.user.user_id, **ser.validated_data)
-        except svc.InvalidUnit as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(
+            lambda: svc.register_product_sync(request.user.user_id, **ser.validated_data)
+        )
+        if isinstance(result, Response):
+            return result
         product = Product.objects.get(pk=result.product_id)
         return Response(
             ProductSerializer(
@@ -84,12 +86,11 @@ class ProductViewSet(viewsets.ViewSet):
         return self._save_product_update(request, pk, ser.validated_data)
 
     def _save_product_update(self, request, pk, validated_data):
-        try:
-            result = svc.update_product_sync(request.user.user_id, int(pk), **validated_data)
-        except svc.UnknownProduct:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.InvalidUnit as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(
+            lambda: svc.update_product_sync(request.user.user_id, int(pk), **validated_data)
+        )
+        if isinstance(result, Response):
+            return result
         product = Product.objects.get(pk=result.product_id)
         return Response(
             ProductSerializer(
@@ -99,12 +100,9 @@ class ProductViewSet(viewsets.ViewSet):
         )
 
     def destroy(self, request, pk=None):
-        try:
-            svc.delete_product_sync(request.user.user_id, int(pk))
-        except svc.UnknownProduct:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(lambda: svc.delete_product_sync(request.user.user_id, int(pk)))
+        if isinstance(result, Response):
+            return result
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -118,17 +116,16 @@ class StockViewSet(viewsets.ViewSet):
         ser = StockAddSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        try:
-            result = svc.add_stock_sync(
+        result = run_inventory(
+            lambda: svc.add_stock_sync(
                 request.user.user_id,
                 sku=data["sku"],
                 quantity=data["quantity"],
                 unit_cost=data.get("unit_cost"),
             )
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        )
+        if isinstance(result, Response):
+            return result
         return Response({"sku": result.sku, "quantity_on_hand": result.remaining})
 
 
@@ -138,21 +135,7 @@ class StockMovementViewSet(viewsets.ViewSet):
         pid = int(product_id) if product_id else None
         rows = svc.list_stock_movements_sync(request.user.user_id, product_id=pid)
         sku_by_product = {int(r["product_id"]): r["sku"] for r in rows}
-        from inventory_api.models import StockMovement
-
-        objs = []
-        for r in rows:
-            obj = StockMovement(
-                stock_movement_id=int(r["stock_movement_id"]),
-                user_id=request.user.user_id,
-                product_id=int(r["product_id"]),
-                quantity_delta=r["quantity_delta"],
-                unit_cost=r["unit_cost"],
-                source=r["source"],
-                source_id=r["source_id"],
-                created_at=r["created_at"],
-            )
-            objs.append(obj)
+        objs = [stock_movement_from_row(request.user.user_id, r) for r in rows]
         return Response(
             StockMovementSerializer(objs, many=True, context={"sku_by_product": sku_by_product}).data
         )
@@ -162,21 +145,9 @@ class StockMovementViewSet(viewsets.ViewSet):
             row = svc.get_stock_movement_sync(request.user.user_id, int(pk))
         except svc.InventoryError:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        from inventory_api.models import StockMovement
-
-        obj = StockMovement(
-            stock_movement_id=int(row["stock_movement_id"]),
-            user_id=request.user.user_id,
-            product_id=int(row["product_id"]),
-            quantity_delta=row["quantity_delta"],
-            unit_cost=row["unit_cost"],
-            source=row["source"],
-            source_id=row["source_id"],
-            created_at=row["created_at"],
-        )
         return Response(
             StockMovementSerializer(
-                obj,
+                stock_movement_from_row(request.user.user_id, row),
                 context={"sku_by_product": {int(row["product_id"]): row["sku"]}},
             ).data
         )
@@ -185,17 +156,16 @@ class StockMovementViewSet(viewsets.ViewSet):
         ser = StockMovementWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        try:
-            row = svc.create_manual_stock_movement_sync(
+        row = run_inventory(
+            lambda: svc.create_manual_stock_movement_sync(
                 request.user.user_id,
                 sku=data["sku"],
                 quantity=data["quantity"],
                 unit_cost=data.get("unit_cost"),
             )
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        )
+        if isinstance(row, Response):
+            return row
         return Response(self._movement_response(request, row), status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, pk=None):
@@ -203,14 +173,13 @@ class StockMovementViewSet(viewsets.ViewSet):
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
             return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            row = svc.update_manual_stock_movement_sync(
+        row = run_inventory(
+            lambda: svc.update_manual_stock_movement_sync(
                 request.user.user_id, int(pk), **ser.validated_data
             )
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        )
+        if isinstance(row, Response):
+            return row
         return Response(self._movement_response(request, row))
 
     def update(self, request, pk=None):
@@ -221,29 +190,14 @@ class StockMovementViewSet(viewsets.ViewSet):
         return self.partial_update(request, pk)
 
     def destroy(self, request, pk=None):
-        try:
-            svc.delete_manual_stock_movement_sync(request.user.user_id, int(pk))
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(lambda: svc.delete_manual_stock_movement_sync(request.user.user_id, int(pk)))
+        if isinstance(result, Response):
+            return result
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _movement_response(self, request, row: dict) -> dict:
-        from inventory_api.models import StockMovement
-
-        obj = StockMovement(
-            stock_movement_id=int(row["stock_movement_id"]),
-            user_id=request.user.user_id,
-            product_id=int(row["product_id"]),
-            quantity_delta=row["quantity_delta"],
-            unit_cost=row.get("unit_cost"),
-            source=row["source"],
-            source_id=row.get("source_id"),
-            created_at=row["created_at"],
-        )
         return StockMovementSerializer(
-            obj,
+            stock_movement_from_row(request.user.user_id, row),
             context={"sku_by_product": {int(row["product_id"]): row["sku"]}},
         ).data
 
@@ -257,17 +211,16 @@ class PurchaseOrderViewSet(viewsets.ViewSet):
         ser = PurchaseOrderWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        try:
-            result = svc.create_purchase_order_sync(
+        result = run_inventory(
+            lambda: svc.create_purchase_order_sync(
                 request.user.user_id,
                 sku=data["sku"],
                 quantity=data["quantity"],
                 total_cost=data["total_cost"],
             )
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        )
+        if isinstance(result, Response):
+            return result
         po = PurchaseOrder.objects.get(pk=result.purchase_order_id)
         body = PurchaseOrderSerializer(po).data
         body["remaining_stock"] = result.remaining
@@ -294,30 +247,20 @@ class PurchaseOrderViewSet(viewsets.ViewSet):
         return self._save_po_update(request, pk, ser.validated_data)
 
     def _save_po_update(self, request, pk, validated_data):
-        try:
-            result = svc.update_purchase_order_sync(request.user.user_id, int(pk), **validated_data)
-        except svc.OrderNotFound:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(
+            lambda: svc.update_purchase_order_sync(request.user.user_id, int(pk), **validated_data)
+        )
+        if isinstance(result, Response):
+            return result
         po = PurchaseOrder.objects.get(pk=result.purchase_order_id)
         body = PurchaseOrderSerializer(po).data
         body["remaining_stock"] = result.remaining
         return Response(body)
 
     def destroy(self, request, pk=None):
-        try:
-            svc.delete_purchase_order_sync(request.user.user_id, int(pk))
-        except svc.OrderNotFound:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(lambda: svc.delete_purchase_order_sync(request.user.user_id, int(pk)))
+        if isinstance(result, Response):
+            return result
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -330,19 +273,16 @@ class SalesOrderViewSet(viewsets.ViewSet):
         ser = SalesOrderWriteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
-        try:
-            result = svc.record_sale_sync(
+        result = run_inventory(
+            lambda: svc.record_sale_sync(
                 request.user.user_id,
                 sku=data["sku"],
                 quantity=data["quantity"],
                 unit_price=data["unit_price"],
             )
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        )
+        if isinstance(result, Response):
+            return result
         so = SalesOrder.objects.get(pk=result.sales_order_id)
         body = SalesOrderSerializer(so).data
         body["revenue"] = result.revenue
@@ -370,16 +310,11 @@ class SalesOrderViewSet(viewsets.ViewSet):
         return self._save_so_update(request, pk, ser.validated_data)
 
     def _save_so_update(self, request, pk, validated_data):
-        try:
-            result = svc.update_sales_order_sync(request.user.user_id, int(pk), **validated_data)
-        except svc.OrderNotFound:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.UnknownProduct as e:
-            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except svc.InsufficientStock as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(
+            lambda: svc.update_sales_order_sync(request.user.user_id, int(pk), **validated_data)
+        )
+        if isinstance(result, Response):
+            return result
         so = SalesOrder.objects.get(pk=result.sales_order_id)
         body = SalesOrderSerializer(so).data
         body["revenue"] = result.revenue
@@ -387,12 +322,9 @@ class SalesOrderViewSet(viewsets.ViewSet):
         return Response(body)
 
     def destroy(self, request, pk=None):
-        try:
-            svc.delete_sales_order_sync(request.user.user_id, int(pk))
-        except svc.OrderNotFound:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except svc.InventoryError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = run_inventory(lambda: svc.delete_sales_order_sync(request.user.user_id, int(pk)))
+        if isinstance(result, Response):
+            return result
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

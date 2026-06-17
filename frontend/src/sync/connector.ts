@@ -1,17 +1,12 @@
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector } from '@powersync/web';
 
+import { apiFetch } from '../api/client';
+
 export type AccessTokenProvider = () => string | null;
 
-/**
- * Hybrid upload connector:
- * - fetchCredentials → Django JWT → POST /api/sync/token/
- * - uploadData → Django JWT → POST /api/sync/mutations/ (chat_message only on server)
- */
+/** PowerSync hybrid connector: token + chat upload mutations via Django REST. */
 export class InventoryConnector implements PowerSyncBackendConnector {
-  constructor(
-    private readonly apiBaseUrl: string,
-    private readonly getAccessToken: AccessTokenProvider,
-  ) {}
+  constructor(private readonly getAccessToken: AccessTokenProvider) {}
 
   async fetchCredentials() {
     const accessToken = this.getAccessToken();
@@ -19,19 +14,10 @@ export class InventoryConnector implements PowerSyncBackendConnector {
       throw new Error('No Django access token — login first');
     }
 
-    const resp = await fetch(`${this.apiBaseUrl}/api/sync/token/`, {
+    const data = await apiFetch<{ token: string; powersync_url: string }>('/api/sync/token/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
+      accessToken,
     });
-
-    if (!resp.ok) {
-      throw new Error(`sync/token failed: HTTP ${resp.status}: ${await resp.text()}`);
-    }
-
-    const data = (await resp.json()) as { token: string; powersync_url: string };
     return { endpoint: data.powersync_url, token: data.token };
   }
 
@@ -60,19 +46,11 @@ export class InventoryConnector implements PowerSyncBackendConnector {
         continue;
       }
 
-      const resp = await fetch(`${this.apiBaseUrl}/api/sync/mutations/`, {
+      await apiFetch('/api/sync/mutations/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
+        accessToken,
         body: JSON.stringify({ mutations }),
       });
-
-      if (!resp.ok) {
-        throw new Error(`sync/mutations failed: HTTP ${resp.status}: ${await resp.text()}`);
-      }
-
       await batch.complete();
     }
   }

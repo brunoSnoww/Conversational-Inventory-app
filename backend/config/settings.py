@@ -93,10 +93,22 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
-).split(",")
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if o.strip()
+]
+
+# Safari (especially iOS) preflights custom headers; ngrok free tier needs this on API calls.
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "ngrok-skip-browser-warning",
+)
 
 # pydantic-ai — set INVENTORY_AGENT_MODEL in .env (see .env.example)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")

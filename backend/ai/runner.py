@@ -7,9 +7,12 @@ import logging
 import threading
 from typing import Any, Coroutine, TypeVar
 
+from asgiref.sync import sync_to_async
+
 from .deps import Deps
 from .agent import inventory_agent
 from .guardrails import FALLBACK_REPLY, InputGuardrailError, check_input
+from .history import load_chat_history
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -36,6 +39,11 @@ def _run_coro(coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
 
 
+def schedule_coro(coro: Coroutine[Any, Any, T]) -> asyncio.Future[T]:
+    """Schedule on the agent loop without blocking the caller (WSGI thread)."""
+    return asyncio.run_coroutine_threadsafe(coro, _get_loop())
+
+
 try:
     from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 except Exception:  # pragma: no cover
@@ -60,13 +68,25 @@ def _friendly_model_error(err: BaseException) -> str | None:
     return None
 
 
-async def run_inventory_agent(user_id: int, message: str) -> str:
+async def run_inventory_agent(
+    user_id: int,
+    message: str,
+    *,
+    chat_message_id: int | None = None,
+) -> str:
     try:
         clean = check_input(message)
     except InputGuardrailError as e:
         return str(e)
     try:
-        result = await inventory_agent.run(clean, deps=Deps(user_id=user_id))
+        history = await sync_to_async(load_chat_history)(
+            user_id, exclude_message_id=chat_message_id,
+        )
+        result = await inventory_agent.run(
+            clean,
+            deps=Deps(user_id=user_id, chat_message_id=chat_message_id),
+            message_history=history or None,
+        )
         return result.output
     except UnexpectedModelBehavior as e:
         log.warning("agent retries exhausted for user_id=%s: %s", user_id, e)
