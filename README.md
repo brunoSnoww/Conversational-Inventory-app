@@ -13,9 +13,16 @@ Postgres, PowerSync replicates the changes, and the UI reacts to the local repli
 
 # Conversational demo
 
-https://github.com/user-attachments/assets/174e8957-ae7c-495c-b709-e7a712fe1789
 
-<img width="1354" height="603" alt="screenshot" src="https://github.com/user-attachments/assets/486f0434-9da5-4892-9329-afee4acaf213" />
+
+https://github.com/user-attachments/assets/83355409-345d-436e-b958-1b87327e4600
+
+
+
+https://github.com/user-attachments/assets/bc7b893b-5fb5-4872-ad8d-79c59468e92e
+
+
+
 
 Demo on how to register,purchase,sell and get info on inventory
 
