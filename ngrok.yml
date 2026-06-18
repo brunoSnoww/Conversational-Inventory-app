@@ -1,0 +1,23 @@
+version: 3
+
+# Single public domain: /api → Django, everything else (e.g. /sync/stream) → PowerSync.
+# Requires authtoken in ~/.config/ngrok/ngrok.yml or macOS Application Support path.
+
+endpoints:
+  - name: kaizntree
+    url: https://canine-scrambled-reseller.ngrok-free.dev
+    upstream:
+      url: http://127.0.0.1:2000
+    traffic_policy:
+      on_http_request:
+        - expressions:
+            - req.url.path.startsWith("/api")
+          actions:
+            - type: forward-internal
+              config:
+                url: https://inventory-api.internal
+
+  - name: api-internal
+    url: https://inventory-api.internal
+    upstream:
+      url: http://127.0.0.1:8000

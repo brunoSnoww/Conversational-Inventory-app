@@ -53,7 +53,7 @@ Edit `.env` — **required for chat**:
 
 ```env
 OPENROUTER_API_KEY=sk-or-...          # https://openrouter.ai/keys
-INVENTORY_AGENT_MODEL=openrouter:deepseek/deepseek-v4-flash
+INVENTORY_AGENT_MODEL=openrouter:openai/gpt-4o
 ```
 
 Use `OPENROUTER_API_KEY`, not `OPENAI_API_KEY` (OpenRouter keys start with `sk-or-`).

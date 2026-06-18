@@ -127,12 +127,12 @@ def _resolve_agent_model() -> str:
     if explicit := os.environ.get("INVENTORY_AGENT_MODEL"):
         return explicit
     if OPENROUTER_API_KEY:
-        return "openrouter:deepseek/deepseek-v4-flash"
+        return "openrouter:openai/gpt-4o"
     if os.environ.get("GOOGLE_API_KEY"):
         return "google:gemini-2.5-flash-lite"
     if os.environ.get("DEEPSEEK_API_KEY"):
         return "deepseek:deepseek-v4-flash"
-    return "openai:gpt-4o-mini"
+    return "openai:gpt-4o"
 
 
 INVENTORY_AGENT_MODEL = _resolve_agent_model()

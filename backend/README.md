@@ -76,7 +76,7 @@ Configured in `sync_api/jwt.py` (must match `../powersync/config.yaml` `client_a
 | `OPENAI_API_KEY` | optional — OpenAI fallback |
 | `INVENTORY_AGENT_MODEL` | override pydantic-ai model id |
 
-Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL` → OpenRouter → Gemini → DeepSeek → `openai:gpt-4o-mini`.
+Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL` → OpenRouter GPT-4o → Gemini → DeepSeek → `openai:gpt-4o`.
 
 ## Service layout
 

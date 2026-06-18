@@ -1,4 +1,4 @@
-import { Box, Stack } from '@mantine/core';
+import { Box } from '@mantine/core';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Chat, ChatInput, ChatMessage, ChatMessages } from 'mantine-chat-components';
 
@@ -15,6 +15,25 @@ import { ErrorText, friendlyError } from './ui';
 function messageSender(role: string): 'user' | 'assistant' {
   return role === 'user' ? 'user' : 'assistant';
 }
+
+/** Scroll lives on ChatMessages — bound Chat height so the page does not scroll. */
+const chatStyles = {
+  root: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    height: 'calc(100dvh - 11rem)',
+    maxHeight: 'calc(100dvh - 11rem)',
+    overflow: 'hidden',
+  },
+};
+
+const chatMessagesStyles = {
+  root: {
+    flex: '1 1 0',
+    minHeight: 0,
+    overflowY: 'auto' as const,
+  },
+};
 
 export function ChatPage() {
   const { session } = useAuth();
@@ -54,9 +73,8 @@ export function ChatPage() {
   }
 
   return (
-    <Stack flex={1} mih={0} gap="sm" style={{ overflow: 'hidden' }}>
-      <Chat flex={1} mih={0} style={{ display: 'flex', flexDirection: 'column' }}>
-        <ChatMessages ref={messagesRef} flex={1} mih={0}>
+    <Chat styles={chatStyles}>
+      <ChatMessages ref={messagesRef} styles={chatMessagesStyles}>
           {messages.map((m) => {
             const id = m.chat_message_id ?? m.id;
             const thinking = isThinkingPlaceholder(m.content);
@@ -96,7 +114,6 @@ export function ChatPage() {
           withFileUpload={false}
           inputProps={{ placeholder: 'Message' }}
         />
-      </Chat>
-    </Stack>
+    </Chat>
   );
 }

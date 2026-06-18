@@ -84,7 +84,6 @@ services:
       POWERSYNC_JWT_SECRET: inventory-dev-powersync-secret-key-32b
       POWERSYNC_JWT_AUDIENCE: ${POWERSYNC_PUBLIC_URL:-http://localhost:2000}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,https://kaizntree-app.vercel.app}
-      # ponytail: set INVENTORY_AGENT_MODEL in .env (e.g. openrouter:deepseek/deepseek-v4-flash)
     volumes:
       - ./backend:/app
     depends_on:
