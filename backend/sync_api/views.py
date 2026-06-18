@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -65,3 +69,38 @@ class SyncMutationsView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({})
+
+
+class SyncWriteCheckpointProxyView(APIView):
+    """Proxy write-checkpoint through Django so browser clients get /api CORS on ngrok."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        client_id = (request.query_params.get("client_id") or "").strip()
+        if not client_id:
+            return Response({"detail": "client_id required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        auth = (request.headers.get("Authorization") or "").strip()
+        if not auth:
+            return Response({"detail": "Authorization required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        target = f"{POWERSYNC_URL.rstrip('/')}/write-checkpoint2.json?client_id={client_id}"
+        upstream = Request(target, headers={"Authorization": auth})
+        try:
+            with urlopen(upstream, timeout=15) as resp:
+                payload = json.loads(resp.read().decode())
+                return Response(payload, status=resp.status)
+        except HTTPError as exc:
+            body = exc.read().decode() if exc.fp else ""
+            try:
+                payload = json.loads(body) if body else {"detail": exc.reason}
+            except json.JSONDecodeError:
+                payload = {"detail": body or exc.reason}
+            return Response(payload, status=exc.code)
+        except URLError as exc:
+            return Response(
+                {"detail": f"PowerSync unreachable: {exc.reason}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )

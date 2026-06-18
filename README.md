@@ -9,7 +9,7 @@ Postgres, PowerSync replicates the changes, and the UI reacts to the local repli
 
 **Stack:** Django REST + Postgres · PowerSync · TanStack DB / React · pydantic-ai
 
----
+-----
 
 # Conversational demo
 
@@ -92,7 +92,7 @@ Open **http://localhost:5173**
 | Field | Value |
 |-------|-------|
 | Email | `demo@inventory.local` |
-| Password | `password123` |
+| Password | `KaizntreeDemo1!` |
 
 ### Ports
 
@@ -122,15 +122,11 @@ Wipes the DB volume, re-runs migrations, restarts the stack. Log out and back in
 | Dashboard empty after login | Log out → log in (clears stale PowerSync SQLite) |
 | Migrations fail | Ensure Postgres is healthy: `docker compose ps` |
 
-### Seed data (after migrate)
+### Deploying (Vercel + ngrok)
 
-| SKU | Stock | Notes |
-|-----|-------|-------|
-| A | 0 | $900 profit (bought 100 @ $100, sold 100 @ $10) |
-| CB-01 | 400 | Craft Beer IPA — chat PO demo |
-| OL-01 | 24 | Olive Oil EVOO |
+The demo frontend was deployed with a **static frontend on Vercel** and **backend at home** exposed
+through ngrok (`./scripts/ngrok-all.sh`). That split is convenient for a portfolio demo, also because Powersync deploy is more complex.
 
----
 
 ## Architecture
 
@@ -223,7 +219,7 @@ PowerSync replicates user-scoped Postgres rows down to an in-browser SQLite data
 over a websocket, and ships local writes back up through a connector. It is the **only**
 source of display data on the client.
 
-**Down (server → client).** `powersync/config.yaml` defines one bucket parameterised by
+**Down (server → client).** `powersync/config.yaml` defines one [bucket](https://docs.powersync.com/sync/rules/organize-data-into-buckets) parameterised by
 the authenticated user:
 
 ```yaml
@@ -356,15 +352,6 @@ client converges on the same replica). This is why `useInventory.ts` mutations h
 
 ---
 
-## Improvements
-
-- **Chat** — render markdown in assistant bubbles; today some answers could have breaklines, better markdown handling;
-- **AI latency** — async agent (202 + background job), streaming or filler messages while tools run.
-- **UI** — `$` / `%` formatting, financials on product detail, better loading states.
-- **Backend** — structured logs, traces, health endpoint, agent isolated from WSGI.
-
----
-
 ## Tests
 
 ```bash
@@ -375,3 +362,4 @@ Guardrail logic and the ledger math each leave a runnable check behind
 (`tests/test_guardrails.py`, `tests/test_services.py`).
 
 API docs: http://localhost:8000/api/docs/ · endpoint list: [backend/README.md](backend/README.md)
+

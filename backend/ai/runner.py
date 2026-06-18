@@ -35,7 +35,8 @@ def _get_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
-def _run_coro(coro: Coroutine[Any, Any, T]) -> T:
+def run_coro_blocking(coro: Coroutine[Any, Any, T]) -> T:
+    """Run an async coroutine on the persistent agent loop (blocks caller thread)."""
     return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
 
 

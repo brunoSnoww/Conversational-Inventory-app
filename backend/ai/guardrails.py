@@ -32,7 +32,11 @@ ALL_DATA_TOOLS = READ_DATA_TOOLS | WRITE_TOOLS
 
 # User is asking to mutate inventory — not a read-only figure question.
 WRITE_INTENT = re.compile(
-    r"\b(register|create\s+(?:a\s+)?purchase|purchase\s+order|record\s+(?:a\s+)?sale|sell\b|add\s+stock)\b",
+    r"\b("
+    r"register|buy\b|sell\b|"
+    r"create\s+(?:a\s+)?purchase|purchase\s+order|"
+    r"record\s+(?:a\s+)?sale|add\s+stock"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -118,6 +122,29 @@ def _tool_called_this_turn(ctx: RunContext, names: frozenset[str]) -> bool:
     return False
 
 
+def _is_clarifying_question(output: str) -> bool:
+    """Allow short follow-up questions when required fields are missing."""
+    stripped = output.strip()
+    return stripped.endswith("?") and not HAS_FIGURE.search(stripped)
+
+
+def _validate_write_uses_tool(ctx: RunContext, output: str) -> None:
+    """Octopus-style: write intents must call a write tool before any final reply."""
+    user_text = _latest_user_prompt(ctx)
+    if not user_text or not WRITE_INTENT.search(user_text):
+        return
+    if _tool_called_this_turn(ctx, WRITE_TOOLS):
+        return
+    stripped = (output or "").strip()
+    if not stripped or _is_clarifying_question(stripped):
+        return
+    raise ModelRetry(
+        "This user message requires a write tool call before you reply. "
+        "Call register_product, create_purchase_order, record_sale, or add_stock first, "
+        "then summarize the tool result — never invent stock levels, revenue, or confirmations."
+    )
+
+
 def _validate_figures_use_fresh_tool(ctx: RunContext, output: str) -> None:
     user_text = _latest_user_prompt(ctx)
     if not user_text or not HAS_FIGURE.search(output):
@@ -135,5 +162,6 @@ async def output_guardrails_handler(ctx: RunContext, output: str) -> str:
     stripped = (output or "").strip()
     if not stripped:
         raise ModelRetry("Your response was empty. Provide a text answer to the user or call a tool.")
+    _validate_write_uses_tool(ctx, stripped)
     _validate_figures_use_fresh_tool(ctx, stripped)
     return output

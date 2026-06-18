@@ -5,7 +5,7 @@ DRF server on Goose-managed Postgres. Schema lives in `../migrations/` — **do 
 ## Setup
 
 ```bash
-cd inventory
+cd inventory/Conversational-Inventory-app
 docker compose up -d
 ./scripts/migrate.sh up
 
@@ -17,14 +17,14 @@ python manage.py check
 python manage.py runserver 8000
 ```
 
-Demo user (from seed migration): `demo@inventory.local` / `password123`
+Demo user: `demo@inventory.local` / `KaizntreeDemo1!` (set by `./scripts/reset-db.sh`; seed migration uses `password123` until reset)
 
 ## Auth
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/login/ \
   -H 'Content-Type: application/json' \
-  -d '{"email":"demo@inventory.local","password":"password123"}'
+  -d '{"email":"demo@inventory.local","password":"KaizntreeDemo1!"}'
 ```
 
 Use `Authorization: Bearer <access>` on protected routes.
@@ -35,24 +35,27 @@ Use `Authorization: Bearer <access>` on protected routes.
 |--------|------|--------|
 | GET/POST | `/api/products/` | list / register |
 | GET/PUT/PATCH/DELETE | `/api/products/{id}/` | detail / update / delete |
-| GET/POST | `/api/stock/` | on-hand per product / manual add |
-| POST | `/api/stock/add/` | manual stock add (alias) |
+| GET | `/api/stock/` | on-hand per product |
+| POST | `/api/stock/add/` | manual stock add |
 | GET/POST | `/api/stock-movements/` | list / create manual movement |
 | GET/PUT/PATCH/DELETE | `/api/stock-movements/{id}/` | detail / update / delete (manual only) |
 | GET/POST | `/api/purchase-orders/` | list / create |
 | GET/PUT/PATCH/DELETE | `/api/purchase-orders/{id}/` | detail / update / delete |
 | GET/POST | `/api/sales-orders/` | list / create |
 | GET/PUT/PATCH/DELETE | `/api/sales-orders/{id}/` | detail / update / delete |
-| GET | `/api/financials/` | profit all products |
-| GET | `/api/financials/{sku_or_id}/` | profit one product |
-| POST | `/api/chat/` | conversational agent (REST) |
+| GET | `/api/financials/{sku_or_id}/` | profit for one product |
 | POST | `/api/sync/token/` | mint PowerSync JWT |
-| POST | `/api/sync/mutations/` | PowerSync upload connector |
+| POST | `/api/sync/mutations/` | PowerSync upload connector (chat + agent) |
 | GET | `/api/sync/jwks/` | HS256 JWKS (local dev) |
+| GET | `/api/sync/write-checkpoint/` | proxy PowerSync write checkpoint (ngrok/CORS) |
 | GET | `/api/docs/` | Swagger UI |
 | GET | `/api/schema/` | OpenAPI schema |
 
+Chat is **not** a REST endpoint — user messages upload via PowerSync; `sync_api/mutations.py` runs the agent and writes the assistant reply.
+
 ## PowerSync env
+
+Configured in `sync_api/jwt.py` (must match `../powersync/config.yaml` `client_auth.jwks`):
 
 | Var | Default |
 |-----|---------|
@@ -60,32 +63,31 @@ Use `Authorization: Bearer <access>` on protected routes.
 | `POWERSYNC_JWT_SECRET` | `inventory-dev-powersync-secret-key-32b` |
 | `POWERSYNC_JWT_AUDIENCE` | `http://localhost:2000` |
 
-Must match `inventory/powersync/config.yaml` `client_auth.jwks`.
-
-## Database env
+## Database & agent env
 
 | Var | Default |
 |-----|---------|
 | `INVENTORY_DB_HOST` | `localhost` |
 | `INVENTORY_DB_PORT` | `5433` |
 | `INVENTORY_DB_NAME` | `db_inventory` |
-| `GOOGLE_API_KEY` | Gemini API key for `/api/chat/` (default provider) |
-| `OPENAI_API_KEY` | optional — use with `INVENTORY_AGENT_MODEL=openai:gpt-4o-mini` |
-| `INVENTORY_AGENT_MODEL` | pydantic-ai model id (default: `google-gla:gemini-2.5-flash-lite` when `GOOGLE_API_KEY` is set) |
+| `OPENROUTER_API_KEY` | preferred chat provider (keys start with `sk-or-`) |
+| `GOOGLE_API_KEY` | optional — Gemini fallback |
+| `DEEPSEEK_API_KEY` | optional — DeepSeek fallback |
+| `OPENAI_API_KEY` | optional — OpenAI fallback |
+| `INVENTORY_AGENT_MODEL` | override pydantic-ai model id |
+
+Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL` → OpenRouter → Gemini → DeepSeek → `openai:gpt-4o-mini`.
 
 ## Service layout
 
-Business logic is split (one SQL file per query):
-
 | Module | Role |
 |--------|------|
-| `services/sql/` | Named SQL constants from `../sql/queries/*.sql` (one file per query) |
-| `services/ledger.py` | Append-only stock movements + compensating entries |
-| `services/products.py` | Product CRUD |
-| `services/stock.py` | Stock queries + manual movements |
-| `services/orders.py` | Purchase/sales orders (compensating ledger on edit/delete) |
-| `services/financials.py` | Profit read model |
-| `services/inventory.py` | Facade re-export for REST + AI tools |
+| `services/inventory.py` | Domain logic + inline SQL (products, stock, orders, financials) |
+| `services/db.py` | Postgres helpers (`fetch_one`, `fetch_all`) |
+| `services/exceptions.py` | Shared domain errors |
+| `inventory_api/` | DRF viewsets, serializers, models (read-only views) |
+| `sync_api/` | PowerSync JWT, upload connector, write-checkpoint proxy |
+| `ai/` | pydantic-ai agent, guardrails, tools |
 
 Order edits **never delete or mutate** ledger rows — they append compensating `stock_movement` lines.
 

@@ -109,12 +109,12 @@ def test_empty_output_retries():
         _run(ctx, "   ")
 
 
-def test_purchase_order_total_passes_without_tool_on_write_intent():
-    """Write commands skip figure guard so the agent does not retry-exhaust on PO narration."""
+def test_purchase_order_total_without_tool_retries_on_success_claim():
+    """Write success narration must follow an actual write tool call."""
     msg = "Create a purchase order for 100 units of CB-01 for $200 total"
     ctx = _ctx(msg)
-    out = _run(ctx, "Purchase order created: 100 units of CB-01 for a total of 200.00.")
-    assert "200" in out
+    with pytest.raises(ModelRetry):
+        _run(ctx, "Purchase order created: 100 units of CB-01 for a total of 200.00.")
 
 
 def test_purchase_order_total_passes_with_create_purchase_order():
@@ -122,3 +122,43 @@ def test_purchase_order_total_passes_with_create_purchase_order():
     ctx = _ctx(msg, tool="create_purchase_order")
     out = _run(ctx, "Purchase order created: 100 units of CB-01 for a total of 200.00. Stock is now 100.")
     assert "200" in out
+
+
+def test_register_claim_without_tool_retries():
+    msg = "register Olive Oil Spray SKU OL-02 unit mL"
+    ctx = _ctx(msg)
+    with pytest.raises(ModelRetry):
+        _run(ctx, "Done! **Olive Oil Spray** (`OL-02`) has been registered as a **mL** product.")
+
+
+def test_register_claim_with_tool_passes():
+    msg = "register Olive Oil Spray SKU OL-02 unit mL"
+    ctx = _ctx(msg, tool="register_product")
+    out = _run(ctx, "Done! **Olive Oil Spray** (`OL-02`) has been registered as a **mL** product.")
+    assert "OL-02" in out
+
+
+def test_sell_hallucination_without_tool_retries():
+    """Regression: 'Done!' after sell — old WRITE_SUCCESS_CLAIM missed \\bdone!\\b before space."""
+    msg = "sell 10 units of CB-01 at $4 each"
+    out = (
+        "Done! **10 units** of `CB-01` sold at **$4.00 each** — total revenue of **$40.00**. "
+        "Stock for `CB-01` is now 390 units remaining."
+    )
+    ctx = _ctx(msg)
+    with pytest.raises(ModelRetry):
+        _run(ctx, out)
+
+
+def test_sell_with_record_sale_passes():
+    msg = "sell 10 units of CB-01 at $4 each"
+    ctx = _ctx(msg, tool="record_sale")
+    out = _run(ctx, "Sale recorded: 10 units of CB-01 at 4.00 each. Stock left 390.")
+    assert "390" in out
+
+
+def test_write_clarifying_question_without_tool_passes():
+    msg = "register a new product"
+    ctx = _ctx(msg)
+    out = _run(ctx, "What SKU and unit should I use for this product?")
+    assert "SKU" in out

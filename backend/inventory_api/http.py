@@ -11,6 +11,10 @@ from services import inventory as svc
 T = TypeVar("T")
 
 
+def empty_patch_response() -> Response:
+    return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+
+
 def run_inventory(action: Callable[[], T]) -> T | Response:
     """Map domain inventory exceptions to DRF responses."""
     try:

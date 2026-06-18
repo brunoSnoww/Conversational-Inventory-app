@@ -20,6 +20,19 @@ ProductUnitLiteral = Literal[
     ProductUnit.KG, ProductUnit.G, ProductUnit.L, ProductUnit.ML, ProductUnit.UNIT,
 ]
 
+_UNIT_ALIASES: dict[str, str] = {
+    "ml": ProductUnit.ML,
+    "ML": ProductUnit.ML,
+    "l": ProductUnit.L,
+    "units": ProductUnit.UNIT,
+    "unit": ProductUnit.UNIT,
+}
+
+
+def _normalize_unit(unit: str) -> str:
+    stripped = unit.strip()
+    return _UNIT_ALIASES.get(stripped, stripped)
+
 
 def _dec(value: float | str, field: str) -> Decimal:
     try:
@@ -34,7 +47,11 @@ async def register_product(
     """Register a new product (or update name/description if the SKU exists)."""
     try:
         p = await sync_to_async(svc.register_product_sync)(
-            ctx.deps.user_id, name=name, sku=sku, unit=unit, description=description,
+            ctx.deps.user_id,
+            name=name,
+            sku=sku,
+            unit=_normalize_unit(unit),
+            description=description,
         )
     except svc.InvalidUnit as e:
         return str(e)

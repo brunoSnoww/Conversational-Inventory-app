@@ -161,3 +161,12 @@ def test_purchase_order_update_appends_compensating_movement():
     stock = client.get(f"{API}/stock/")
     row = next(s for s in stock.json() if s["sku"] == "L-PO")
     assert Decimal(row["quantity_on_hand"]) == Decimal("8")
+
+
+@requires_db
+@pytest.mark.django_db
+def test_stock_movements_reject_invalid_product_id():
+    client = _auth(APIClient(), "bad-pid@inventory.local")
+    resp = client.get(f"{API}/stock-movements/?product_id=not-an-id")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "product_id must be an integer."

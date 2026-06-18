@@ -281,14 +281,8 @@ def delete_product_sync(user_id: int, product_id: int) -> None:
 
 
 def add_stock_sync(user_id: int, *, sku: str, quantity: Decimal, unit_cost: Decimal | None = None) -> StockResult:
-    if quantity <= 0:
-        raise InventoryError("Quantity must be positive.")
-    product = get_product_by_sku(user_id, sku)
-    _append_movement(
-        user_id, int(product["product_id"]), quantity_delta=quantity,
-        source="MANUAL", source_id=None, unit_cost=unit_cost,
-    )
-    return StockResult(sku=product["sku"], remaining=stock_for(user_id, int(product["product_id"])))
+    row = create_manual_stock_movement_sync(user_id, sku=sku, quantity=quantity, unit_cost=unit_cost)
+    return StockResult(sku=row["sku"], remaining=stock_for(user_id, int(row["product_id"])))
 
 
 def query_stock_sync(user_id: int, *, sku: str | None = None) -> list[StockQueryResult]:

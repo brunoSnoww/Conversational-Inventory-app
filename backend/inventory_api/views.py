@@ -5,7 +5,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from inventory_api.http import run_inventory, stock_movement_from_row
+from inventory_api.http import empty_patch_response, run_inventory, stock_movement_from_row
 from inventory_api.models import Product, ProductFinancialsView, ProductStockView, PurchaseOrder, SalesOrder
 from inventory_api.serializers import (
     FinancialsSerializer,
@@ -77,7 +77,7 @@ class ProductViewSet(viewsets.ViewSet):
         ser = ProductUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self._save_product_update(request, pk, ser.validated_data)
 
     def partial_update(self, request, pk=None):
@@ -132,7 +132,16 @@ class StockViewSet(viewsets.ViewSet):
 class StockMovementViewSet(viewsets.ViewSet):
     def list(self, request):
         product_id = request.query_params.get("product_id")
-        pid = int(product_id) if product_id else None
+        if product_id:
+            try:
+                pid = int(product_id)
+            except ValueError:
+                return Response(
+                    {"detail": "product_id must be an integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            pid = None
         rows = svc.list_stock_movements_sync(request.user.user_id, product_id=pid)
         sku_by_product = {int(r["product_id"]): r["sku"] for r in rows}
         objs = [stock_movement_from_row(request.user.user_id, r) for r in rows]
@@ -172,7 +181,7 @@ class StockMovementViewSet(viewsets.ViewSet):
         ser = StockMovementUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         row = run_inventory(
             lambda: svc.update_manual_stock_movement_sync(
                 request.user.user_id, int(pk), **ser.validated_data
@@ -186,7 +195,7 @@ class StockMovementViewSet(viewsets.ViewSet):
         ser = StockMovementUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self.partial_update(request, pk)
 
     def destroy(self, request, pk=None):
@@ -236,14 +245,14 @@ class PurchaseOrderViewSet(viewsets.ViewSet):
         ser = PurchaseOrderUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self._save_po_update(request, pk, ser.validated_data)
 
     def update(self, request, pk=None):
         ser = PurchaseOrderUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self._save_po_update(request, pk, ser.validated_data)
 
     def _save_po_update(self, request, pk, validated_data):
@@ -299,14 +308,14 @@ class SalesOrderViewSet(viewsets.ViewSet):
         ser = SalesOrderUpdateSerializer(data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self._save_so_update(request, pk, ser.validated_data)
 
     def update(self, request, pk=None):
         ser = SalesOrderUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         if not ser.validated_data:
-            return Response({"detail": "At least one field required."}, status=status.HTTP_400_BAD_REQUEST)
+            return empty_patch_response()
         return self._save_so_update(request, pk, ser.validated_data)
 
     def _save_so_update(self, request, pk, validated_data):

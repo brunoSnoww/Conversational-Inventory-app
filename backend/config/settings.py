@@ -108,6 +108,7 @@ from corsheaders.defaults import default_headers  # noqa: E402
 CORS_ALLOW_HEADERS = (
     *default_headers,
     "ngrok-skip-browser-warning",
+    "x-user-agent",
 )
 
 # pydantic-ai — set INVENTORY_AGENT_MODEL in .env (see .env.example)
@@ -135,8 +136,3 @@ def _resolve_agent_model() -> str:
 
 
 INVENTORY_AGENT_MODEL = _resolve_agent_model()
-
-# PowerSync (local HS256 — see inventory/powersync/config.yaml)
-POWERSYNC_URL = os.environ.get("POWERSYNC_URL", "http://localhost:2000")
-POWERSYNC_JWT_SECRET = os.environ.get("POWERSYNC_JWT_SECRET", "inventory-dev-powersync-secret-key-32b")
-POWERSYNC_JWT_AUDIENCE = os.environ.get("POWERSYNC_JWT_AUDIENCE", "http://localhost:2000")

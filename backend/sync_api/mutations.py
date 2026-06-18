@@ -114,11 +114,15 @@ async def _resolve_pending_reply(user_id: int, user_message_id: int) -> _Pending
         FROM chat_message
         WHERE user_id = %s
           AND role = 'assistant'::chat_message_role
-          AND chat_message_id > %s
-        ORDER BY chat_message_id ASC
+          AND created_at > (
+            SELECT created_at
+            FROM chat_message
+            WHERE chat_message_id = %s AND user_id = %s
+          )
+        ORDER BY created_at ASC
         LIMIT 1
         """,
-        [user_id, user_message_id],
+        [user_id, user_message_id, user_id],
     )
     if row is None:
         placeholder_id = await _insert_thinking_placeholder(user_id)
@@ -204,6 +208,6 @@ async def _handle_chat_message(user_id: int, data: dict[str, Any]) -> None:
 
 def dispatch_mutations_sync(user_id: int, mutations: list[Mutation]) -> None:
     """WSGI-safe entry point — run on persistent agent loop."""
-    from ai.runner import _run_coro
+    from ai.runner import run_coro_blocking
 
-    _run_coro(dispatch_mutations(user_id, mutations))
+    run_coro_blocking(dispatch_mutations(user_id, mutations))

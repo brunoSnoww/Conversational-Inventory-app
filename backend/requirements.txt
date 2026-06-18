@@ -1,5 +1,5 @@
 # API (install first)
 -r requirements-api.txt
 
-# Chat agent (optional until /api/chat/)
+# Chat agent (PowerSync upload connector + optional REST)
 -r requirements-ai.txt
