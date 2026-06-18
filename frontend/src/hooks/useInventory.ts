@@ -13,7 +13,15 @@ import { useAuth } from '../auth/AuthContext';
 
 function useAuthedMutation<TBody>(fn: (token: string, body: TBody) => Promise<unknown>) {
   const { session } = useAuth();
-  return useMutation({ mutationFn: (body: TBody) => fn(session!.access, body) });
+  return useMutation({
+    mutationFn: (body: TBody) => {
+      const token = session?.access;
+      if (!token) {
+        throw new Error('Not signed in');
+      }
+      return fn(token, body);
+    },
+  });
 }
 
 export function useCreateProduct() {

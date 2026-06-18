@@ -30,9 +30,6 @@ const NAV_ICONS: Record<NavIconId, Icon> = {
 
 const SIDEBAR_WIDTH = 200;
 const ICON_SIZE = 22;
-const CONTENT_HEIGHT = 'calc(100vh - 2 * var(--mantine-spacing-md) - 3.25rem - var(--mantine-spacing-md))';
-
-const shellTexture = shellTextureStyle;
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { logout } = useAuth();
@@ -84,8 +81,12 @@ export function AppShellLayout() {
   const [mobileOpened, { toggle, close }] = useDisclosure();
 
   return (
-    <Box mih="100vh" p={SHELL_PADDING} style={{ ...shellTexture, display: 'flex', flexDirection: 'column' }}>
-      <Group justify="space-between" mb={SHELL_GAP} wrap="nowrap">
+    <Box
+      mih="100dvh"
+      p={SHELL_PADDING}
+      style={{ ...shellTextureStyle, display: 'flex', flexDirection: 'column' }}
+    >
+      <Group justify="space-between" mb={SHELL_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
         <Group gap="sm" wrap="nowrap">
           <Burger opened={mobileOpened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
           <img src={kaizntreeLogo} alt="" width={36} height={36} />
@@ -99,7 +100,8 @@ export function AppShellLayout() {
         gap={SHELL_GAP}
         align="stretch"
         direction={{ base: 'column', sm: 'row' }}
-        h={{ base: 'auto', sm: CONTENT_HEIGHT }}
+        flex={1}
+        mih={0}
         style={{ minHeight: 0 }}
       >
         <Paper
@@ -122,10 +124,27 @@ export function AppShellLayout() {
           bg="white"
           radius={SHELL_RADIUS}
           p={{ base: 'md', sm: 'xl' }}
-          h={{ base: 'auto', sm: '100%' }}
-          style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}
+          flex={1}
+          mih={0}
+          style={{
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
         >
-          <Outlet />
+          <Box
+            flex={1}
+            mih={0}
+            style={{
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <Outlet />
+          </Box>
         </Paper>
       </Flex>
     </Box>

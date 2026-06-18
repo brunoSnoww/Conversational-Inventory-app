@@ -12,9 +12,6 @@ import type {
 } from '../sync';
 import { Muted } from './ui';
 
-/** Matches AppShell header height — used for stickyHeaderOffset. */
-const STICKY_HEADER_OFFSET = 56;
-
 const TABLE_PROPS = {
   striped: true,
   highlightOnHover: true,
@@ -43,7 +40,7 @@ function DataTable({
     <Table
       {...TABLE_PROPS}
       stickyHeader={Boolean(maxHeight)}
-      stickyHeaderOffset={STICKY_HEADER_OFFSET}
+      stickyHeaderOffset={0}
       data={data}
     />
   );

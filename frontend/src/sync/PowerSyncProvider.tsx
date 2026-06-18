@@ -39,18 +39,21 @@ export function InventoryPowerSyncProvider({ enabled, accessToken, userId, child
 
       if (!enabled || !accessToken || !userId) {
         setStatus('off');
-        await disconnectPowerSync(true);
+        await disconnectPowerSync();
         return;
       }
 
       setStatus('connecting');
+      syncLog.info('provider connecting', { userId });
       try {
         const db = await initPowerSync(() => accessToken, userId);
         if (cancelled) {
+          syncLog.warn('provider cancelled after init', { userId });
           return;
         }
         setDatabase(db);
         setStatus('ready');
+        syncLog.info('provider ready', { userId, hasContext: true });
       } catch (err) {
         if (!cancelled) {
           syncLog.error('provider error', err);

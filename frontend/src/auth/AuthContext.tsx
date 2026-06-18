@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { login as apiLogin, register as apiRegister } from '../api/inventory';
+import { login as apiLogin, register as apiRegister } from '../api/auth';
 import type { AuthSession } from '../api/types';
 import { routes } from '../routes';
 import { disconnectPowerSync } from '../sync/db';
@@ -41,7 +41,7 @@ function loadSession(): AuthSession | null {
 }
 
 async function persistSession(load: () => Promise<AuthSession>): Promise<AuthSession> {
-  await disconnectPowerSync(true);
+  await disconnectPowerSync();
   return load();
 }
 
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setSession(null);
-    void disconnectPowerSync(true).finally(() => {
+    void disconnectPowerSync().finally(() => {
       window.location.assign(routes.login);
     });
   }, []);

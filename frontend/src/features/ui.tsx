@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Alert, Center, Paper, Stack, Text, Title } from '@mantine/core';
 
+import { formatError } from '../api/client';
 import { PANEL_GAP, SHELL_RADIUS } from '../app/theme';
-import { useSyncStatus } from '../sync/PowerSyncProvider';
+import { useSyncStatus } from '../sync';
 
 const loginCardProps = {
   bg: 'white',
@@ -10,8 +11,19 @@ const loginCardProps = {
   p: 'xl',
 } as const;
 
-export function Panel({ children }: { children: ReactNode }) {
-  return <Stack gap="sm">{children}</Stack>;
+export function Panel({ children, fill }: { children: ReactNode; fill?: boolean }) {
+  return (
+    <Stack
+      gap="sm"
+      style={
+        fill
+          ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+          : undefined
+      }
+    >
+      {children}
+    </Stack>
+  );
 }
 
 export function Page({
@@ -20,12 +32,14 @@ export function Page({
   description,
   children,
   narrow,
+  fill,
 }: {
   title: string;
   label?: string;
   description?: string;
   children: ReactNode;
   narrow?: boolean;
+  fill?: boolean;
 }) {
   const header = (
     <div>
@@ -58,10 +72,22 @@ export function Page({
     );
   }
 
+  const fillStyle = fill
+    ? {
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        overflow: 'hidden' as const,
+      }
+    : { flex: 1, minHeight: 0, overflowY: 'auto' as const };
+
   return (
-    <Stack gap={PANEL_GAP}>
+    <Stack gap={PANEL_GAP} style={fillStyle}>
       {header}
-      <Stack gap={PANEL_GAP}>{children}</Stack>
+      <Stack gap={PANEL_GAP} style={fill ? fillStyle : undefined}>
+        {children}
+      </Stack>
     </Stack>
   );
 }
@@ -85,15 +111,16 @@ export function Muted({ children }: { children: ReactNode }) {
   );
 }
 
-export function ErrorText({ children }: { children: ReactNode }) {
+export function ErrorText({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <Alert color="red" variant="light">
+    <Alert color="red" variant="light" title={title}>
       {children}
     </Alert>
   );
 }
 
-export function friendlyError(message: string): string {
+export function friendlyError(err: unknown): string {
+  const message = formatError(err);
   if (/load failed|failed to fetch|networkerror|network error/i.test(message)) {
     return 'Could not reach the server. Check your connection and try again.';
   }
@@ -108,7 +135,6 @@ export function useSyncing() {
   return {
     syncing: status !== 'ready',
     syncError: error ? friendlyError(error) : null,
-    syncStatus: status,
   };
 }
 
@@ -134,7 +160,7 @@ export function SyncQuery<T>({
     return <Muted>Loading…</Muted>;
   }
   if (error) {
-    return <ErrorText>{friendlyError(error.message)}</ErrorText>;
+    return <ErrorText>{friendlyError(error)}</ErrorText>;
   }
   if (!data?.length) {
     return empty;

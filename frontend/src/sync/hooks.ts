@@ -86,7 +86,8 @@ export type ProductRow = {
 };
 
 export function useProductBySku(sku: string | undefined) {
-  return usePowerSyncQuery<ProductRow>(PRODUCT_BY_SKU, sku ? [sku] : ['']);
+  const key = sku?.trim() || '__no_sku__';
+  return usePowerSyncQuery<ProductRow>(PRODUCT_BY_SKU, [key]);
 }
 
 export function usePurchaseOrders() {

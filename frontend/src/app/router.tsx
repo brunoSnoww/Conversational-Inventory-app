@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { Stack } from '@mantine/core';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthenticatedLayout, GuestRoute } from './guards';
@@ -13,7 +14,7 @@ import {
   SalesPage,
   StockPage,
 } from '../features/inventory';
-import { Muted, Page } from '../features/ui';
+import { Muted } from '../features/ui';
 import { routes } from '../routes';
 
 const LazyChatPage = lazy(() =>
@@ -22,7 +23,13 @@ const LazyChatPage = lazy(() =>
 
 function ChatRoute() {
   return (
-    <Suspense fallback={<Page title="Chat"><Muted>Loading…</Muted></Page>}>
+    <Suspense
+      fallback={
+        <Stack flex={1} mih={0} justify="center" align="center">
+          <Muted>Loading…</Muted>
+        </Stack>
+      }
+    >
       <LazyChatPage />
     </Suspense>
   );

@@ -1,6 +1,7 @@
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector } from '@powersync/web';
 
 import { apiFetch } from '../api/client';
+import { syncLog } from './logger';
 
 export type AccessTokenProvider = () => string | null;
 
@@ -18,6 +19,7 @@ export class InventoryConnector implements PowerSyncBackendConnector {
       method: 'POST',
       accessToken,
     });
+    syncLog.info('sync token', { endpoint: data.powersync_url });
     return { endpoint: data.powersync_url, token: data.token };
   }
 
@@ -46,6 +48,10 @@ export class InventoryConnector implements PowerSyncBackendConnector {
         continue;
       }
 
+      syncLog.info('upload crud batch', {
+        count: mutations.length,
+        tables: [...new Set(mutations.map((m) => m.type))],
+      });
       await apiFetch('/api/sync/mutations/', {
         method: 'POST',
         accessToken,

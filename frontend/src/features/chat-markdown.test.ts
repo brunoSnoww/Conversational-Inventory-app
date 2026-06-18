@@ -47,4 +47,10 @@ describe('renderAssistantMarkdown', () => {
     expect(html).toContain('<ul>');
     expect(html).toContain('<li>first</li>');
   });
+
+  it('escapes raw HTML from assistant output', () => {
+    const html = renderAssistantMarkdown('<script>alert(1)</script>');
+    expect(html).not.toContain('<script');
+    expect(html).toContain('&lt;script');
+  });
 });

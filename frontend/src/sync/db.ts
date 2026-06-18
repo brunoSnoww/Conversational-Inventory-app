@@ -1,7 +1,8 @@
-import { PowerSyncDatabase } from '@powersync/web';
+import type { PowerSyncDatabase } from '@powersync/web';
 
 import { createChatCollection, setChatCollection } from './collections';
 import { InventoryConnector, type AccessTokenProvider } from './connector';
+import { InventoryPowerSyncDatabase } from './inventory-powersync-database';
 import { syncLog } from './logger';
 import { AppSchema } from './schema';
 
@@ -16,11 +17,39 @@ function dbFilename(userId: string): string {
   return `inv-${SCHEMA_VERSION}-u${userId}.db`;
 }
 
-export function getPowerSyncDb(): PowerSyncDatabase {
-  if (!db) {
-    throw new Error('PowerSync not initialized — call initPowerSync() after login');
-  }
-  return db;
+async function localChatCount(instance: PowerSyncDatabase): Promise<number> {
+  const row = await instance.getOptional<{ c: number }>('SELECT COUNT(*) AS c FROM chat_message');
+  return Number(row?.c ?? 0);
+}
+
+async function logChatSnapshot(instance: PowerSyncDatabase, label: string): Promise<void> {
+  const rows = await instance.getAll<{ chat_message_id: string; role: string; content: string }>(
+    `SELECT chat_message_id, role, substr(content, 1, 50) AS content
+     FROM chat_message ORDER BY created_at DESC LIMIT 4`,
+  );
+  syncLog.info(`chat sqlite [${label}]`, {
+    count: await localChatCount(instance),
+    tail: rows.map((r) => ({ id: r.chat_message_id, role: r.role, content: r.content })),
+  });
+}
+
+function attachSyncDebugListeners(instance: PowerSyncDatabase): void {
+  instance.registerListener({
+    statusChanged: (status) => {
+      syncLog.info('powersync status', {
+        connected: status.connected,
+        connecting: status.connecting,
+        hasSynced: status.hasSynced,
+        downloading: status.dataFlowStatus.downloading,
+        uploading: status.dataFlowStatus.uploading,
+        lastSyncedAt: status.lastSyncedAt?.toISOString(),
+        downloadError: status.dataFlowStatus.downloadError?.message,
+      });
+      if (!status.dataFlowStatus.downloading && status.connected) {
+        void logChatSnapshot(instance, 'after-download');
+      }
+    },
+  });
 }
 
 async function localProductCount(instance: PowerSyncDatabase): Promise<number> {
@@ -60,7 +89,7 @@ export async function initPowerSync(
   initPromise = (async () => {
     setChatCollection(null);
     const connector = new InventoryConnector(getAccessToken);
-    const instance = new PowerSyncDatabase({
+    const instance = new InventoryPowerSyncDatabase({
       schema: AppSchema,
       database: { dbFilename: dbFilename(userId) },
       flags: { enableMultiTabs: false, useWebWorker: true },
@@ -71,7 +100,10 @@ export async function initPowerSync(
       // Wipe stale bucket checkpoints from prior sessions in this IndexedDB file.
       await instance.disconnectAndClear();
       await instance.connect(connector);
+      attachSyncDebugListeners(instance);
+      syncLog.info('init connected', { userId, dbFile: dbFilename(userId) });
       await waitForPopulatedReplica(instance, connector);
+      await logChatSnapshot(instance, 'init-done');
       setChatCollection(createChatCollection(instance));
       db = instance;
       return instance;
@@ -88,7 +120,7 @@ export async function initPowerSync(
 }
 
 /** Logout: wipe local DB. Same filename on next login gets disconnectAndClear before connect. */
-export async function disconnectPowerSync(clear = false): Promise<void> {
+export async function disconnectPowerSync(): Promise<void> {
   if (initPromise) {
     try {
       await initPromise;
@@ -102,11 +134,7 @@ export async function disconnectPowerSync(clear = false): Promise<void> {
     return;
   }
 
-  if (clear) {
-    await db.disconnectAndClear();
-  } else {
-    await db.disconnect();
-  }
+  await db.disconnectAndClear();
   await db.close({ disconnect: false });
   db = null;
 }

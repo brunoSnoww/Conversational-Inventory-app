@@ -10,6 +10,11 @@ import { ErrorText, Page, friendlyError } from './ui';
 
 type AuthMode = 'signin' | 'signup';
 
+const DEMO_SIGN_IN = {
+  email: 'demo@inventory.local',
+  password: 'KaizntreeDemo1!',
+} as const;
+
 export function LoginPage() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -19,10 +24,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const signInForm = useForm({
-    initialValues: {
-      email: 'demo@inventory.local',
-      password: 'KaizntreeDemo1!',
-    },
+    initialValues: { ...DEMO_SIGN_IN },
     validate: {
       email: isEmail('Invalid email'),
       password: isNotEmpty('Password is required'),
@@ -73,7 +75,7 @@ export function LoginPage() {
                 await login(values.email, values.password);
                 await afterAuth();
               } catch (err) {
-                setError(friendlyError(err instanceof Error ? err.message : 'Login failed'));
+                setError(friendlyError(err));
               } finally {
                 setLoading(false);
               }
@@ -82,7 +84,7 @@ export function LoginPage() {
             <Stack gap="md">
               <TextInput label="Email" type="email" {...signInForm.getInputProps('email')} />
               <PasswordInput label="Password" {...signInForm.getInputProps('password')} />
-              {error && <ErrorText>{error}</ErrorText>}
+              {error && <ErrorText title="Sign in failed">{error}</ErrorText>}
               <Button type="submit" loading={loading}>
                 Sign in
               </Button>
@@ -97,7 +99,7 @@ export function LoginPage() {
                 await register(values.email, values.password);
                 await afterAuth();
               } catch (err) {
-                setError(friendlyError(err instanceof Error ? err.message : 'Registration failed'));
+                setError(friendlyError(err));
               } finally {
                 setLoading(false);
               }
@@ -110,7 +112,7 @@ export function LoginPage() {
                 label="Confirm password"
                 {...signUpForm.getInputProps('confirmPassword')}
               />
-              {error && <ErrorText>{error}</ErrorText>}
+              {error && <ErrorText title="Registration failed">{error}</ErrorText>}
               <Button type="submit" loading={loading}>
                 Create account
               </Button>

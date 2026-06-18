@@ -1,4 +1,5 @@
 import { getChatCollection } from './collections';
+import { syncLog } from './logger';
 
 /** Client-side id for idempotent upload (server ON CONFLICT DO NOTHING). */
 export function clientMessageId(): string {
@@ -21,6 +22,7 @@ export async function sendChatMessage(userId: string, content: string): Promise<
   }
 
   const chatMessageId = clientMessageId();
+  syncLog.info('chat send optimistic', { chatMessageId, content: trimmed });
   await getChatCollection().insert({
     id: chatMessageId,
     chat_message_id: chatMessageId,

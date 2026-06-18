@@ -32,11 +32,12 @@ export function ProductForm() {
   return (
     <form
       onSubmit={form.onSubmit(async (values) => {
+        const description = values.description.trim();
         await createProduct.mutateAsync({
           name: values.name.trim(),
           sku: values.sku.trim(),
           unit: values.unit,
-          description: values.description.trim(),
+          ...(description ? { description } : {}),
         });
         form.reset();
       })}
@@ -46,12 +47,14 @@ export function ProductForm() {
           <TextInput
             label="SKU"
             placeholder="SKU"
+            withAsterisk
             style={{ flex: 1, minWidth: 100 }}
             {...form.getInputProps('sku')}
           />
           <TextInput
             label="Name"
             placeholder="Name"
+            withAsterisk
             style={{ flex: 1, minWidth: 120 }}
             {...form.getInputProps('name')}
           />
@@ -59,19 +62,21 @@ export function ProductForm() {
             label="Unit"
             data={PRODUCT_UNITS.map((u) => ({ value: u, label: u }))}
             allowDeselect={false}
+            withAsterisk
             style={{ width: 100 }}
             {...form.getInputProps('unit')}
+          />
+          <TextInput
+            label="Description"
+            placeholder="Optional"
+            style={{ flex: 1, minWidth: 160 }}
+            {...form.getInputProps('description')}
           />
           <Button type="submit" loading={createProduct.isPending}>
             Create
           </Button>
         </Group>
-        <TextInput
-          label="Description"
-          placeholder="Description"
-          {...form.getInputProps('description')}
-        />
-        {createProduct.error && <ErrorText>{friendlyError(createProduct.error.message)}</ErrorText>}
+        {createProduct.error && <ErrorText>{friendlyError(createProduct.error)}</ErrorText>}
       </Stack>
     </form>
   );
@@ -100,17 +105,19 @@ export function StockForm() {
         <Group align="flex-end" wrap="wrap">
           <TextInput
             label="SKU"
+            withAsterisk
             style={{ flex: 1, minWidth: 100 }}
             {...form.getInputProps('sku')}
           />
           <TextInput
             label="Qty"
+            withAsterisk
             style={{ width: 100 }}
             {...form.getInputProps('quantity')}
           />
           <TextInput
             label="Unit cost"
-            placeholder="optional"
+            placeholder="Optional"
             style={{ width: 140 }}
             {...form.getInputProps('unitCost')}
           />
@@ -118,7 +125,7 @@ export function StockForm() {
             Add
           </Button>
         </Group>
-        {addStock.error && <ErrorText>{friendlyError(addStock.error.message)}</ErrorText>}
+        {addStock.error && <ErrorText>{friendlyError(addStock.error)}</ErrorText>}
       </Stack>
     </form>
   );
@@ -150,16 +157,19 @@ export function PurchaseForm() {
         <Group align="flex-end" wrap="wrap">
           <TextInput
             label="SKU"
+            withAsterisk
             style={{ flex: 1, minWidth: 100 }}
             {...form.getInputProps('sku')}
           />
           <TextInput
             label="Qty"
+            withAsterisk
             style={{ width: 100 }}
             {...form.getInputProps('quantity')}
           />
           <TextInput
             label="Total cost"
+            withAsterisk
             style={{ width: 120 }}
             {...form.getInputProps('totalCost')}
           />
@@ -167,7 +177,7 @@ export function PurchaseForm() {
             PO
           </Button>
         </Group>
-        {createPo.error && <ErrorText>{friendlyError(createPo.error.message)}</ErrorText>}
+        {createPo.error && <ErrorText>{friendlyError(createPo.error)}</ErrorText>}
       </Stack>
     </form>
   );
@@ -199,16 +209,19 @@ export function SalesForm() {
         <Group align="flex-end" wrap="wrap">
           <TextInput
             label="SKU"
+            withAsterisk
             style={{ flex: 1, minWidth: 100 }}
             {...form.getInputProps('sku')}
           />
           <TextInput
             label="Qty"
+            withAsterisk
             style={{ width: 100 }}
             {...form.getInputProps('quantity')}
           />
           <TextInput
             label="Unit price"
+            withAsterisk
             style={{ width: 120 }}
             {...form.getInputProps('unitPrice')}
           />
@@ -216,7 +229,7 @@ export function SalesForm() {
             Sell
           </Button>
         </Group>
-        {createSo.error && <ErrorText>{friendlyError(createSo.error.message)}</ErrorText>}
+        {createSo.error && <ErrorText>{friendlyError(createSo.error)}</ErrorText>}
       </Stack>
     </form>
   );

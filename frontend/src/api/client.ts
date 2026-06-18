@@ -1,16 +1,14 @@
+import { ngrokSkipHeaders } from '../lib/ngrok';
 import { getApiBaseUrl } from './base-url';
 
 const API_BASE = getApiBaseUrl();
 
-export function jsonApiHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const headers: Record<string, string> = {
+function jsonApiHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
     'Content-Type': 'application/json',
+    ...ngrokSkipHeaders(API_BASE),
     ...extra,
   };
-  if (API_BASE.includes('ngrok-free.app') || API_BASE.includes('ngrok-free.dev')) {
-    headers['ngrok-skip-browser-warning'] = 'true';
-  }
-  return headers;
 }
 
 export class ApiError extends Error {
@@ -22,6 +20,102 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  email: 'Email',
+  password: 'Password',
+  sku: 'SKU',
+  name: 'Name',
+  unit: 'Unit',
+  quantity: 'Quantity',
+  unit_price: 'Unit price',
+  total_cost: 'Total cost',
+};
+
+function messageFromValue(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const parts = value.filter(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0,
+    );
+    if (parts.length) {
+      return parts.join(' ');
+    }
+  }
+  return null;
+}
+
+/** Turn Django REST Framework error JSON into a single user-facing sentence. */
+export function parseApiErrorBody(body: unknown): string | null {
+  if (body == null) {
+    return null;
+  }
+  if (typeof body === 'string') {
+    const trimmed = body.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        return parseApiErrorBody(JSON.parse(trimmed));
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+  if (typeof body !== 'object') {
+    return null;
+  }
+
+  const obj = body as Record<string, unknown>;
+
+  const detail = messageFromValue(obj.detail);
+  if (detail) {
+    return detail;
+  }
+
+  const nonField = messageFromValue(obj.non_field_errors);
+  if (nonField) {
+    return nonField;
+  }
+
+  const fieldMessages: string[] = [];
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === 'detail' || key === 'non_field_errors') {
+      continue;
+    }
+    const msg = messageFromValue(value);
+    if (msg) {
+      const label = FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
+      fieldMessages.push(`${label}: ${msg}`);
+    }
+  }
+  if (fieldMessages.length) {
+    return fieldMessages.join(' ');
+  }
+
+  return null;
+}
+
+export function formatError(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (err instanceof ApiError) {
+    return (
+      parseApiErrorBody(err.body) ??
+      parseApiErrorBody(err.message) ??
+      (err.message || fallback)
+    );
+  }
+  if (err instanceof Error) {
+    return parseApiErrorBody(err.message) ?? (err.message || fallback);
+  }
+  if (typeof err === 'string') {
+    return parseApiErrorBody(err) ?? (err || fallback);
+  }
+  return fallback;
 }
 
 export async function apiFetch<T>(
@@ -54,11 +148,9 @@ export async function apiFetch<T>(
   }
 
   if (!resp.ok) {
-    const detail =
-      typeof body === 'object' && body && 'detail' in body
-        ? String((body as { detail: unknown }).detail)
-        : text || resp.statusText;
-    throw new ApiError(detail, resp.status, body);
+    const message =
+      parseApiErrorBody(body) ?? (text || resp.statusText || `Request failed (${resp.status})`);
+    throw new ApiError(message, resp.status, body);
   }
 
   return body as T;

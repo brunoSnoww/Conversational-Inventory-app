@@ -1,4 +1,6 @@
+export { isThinkingPlaceholder, THINKING_PLACEHOLDER } from './chat-constants';
 export { sendChatMessage } from './chat';
+export { useSyncStatus } from './PowerSyncProvider';
 export {
   useChatMessages,
   useDashboard,

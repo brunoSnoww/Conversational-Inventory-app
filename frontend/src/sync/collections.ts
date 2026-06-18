@@ -1,7 +1,7 @@
 /**
  * TanStack DB collections backed by PowerSync SQLite (eager sync mode).
  *
- * Flow per tanstack.md: PowerSync service → local SQLite → collection (eager) → useLiveQuery.
+ * Flow: PowerSync service → local SQLite → collection (eager) → useLiveQuery.
  * Writes for chat use optimistic collection.insert → PowerSync upload connector.
  */
 import type { PowerSyncDatabase } from '@powersync/web';
@@ -10,7 +10,9 @@ import { createCollection } from '@tanstack/react-db';
 
 import { AppSchema } from './schema';
 
-export function createChatCollection(database: PowerSyncDatabase) {
+type ChatCollection = ReturnType<typeof createChatCollection>;
+
+function createChatCollection(database: PowerSyncDatabase) {
   return createCollection(
     powerSyncCollectionOptions({
       database,
@@ -20,11 +22,11 @@ export function createChatCollection(database: PowerSyncDatabase) {
   );
 }
 
-export type ChatCollection = ReturnType<typeof createChatCollection>;
-
 let chatCollection: ChatCollection | null = null;
 
-export function setChatCollection(collection: ChatCollection | null) {
+export { createChatCollection, setChatCollection };
+
+function setChatCollection(collection: ChatCollection | null) {
   chatCollection = collection;
 }
 

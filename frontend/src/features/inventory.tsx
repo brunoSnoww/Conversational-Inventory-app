@@ -10,7 +10,7 @@ import {
   useStockMovements,
 } from '../sync';
 import { ProductForm, PurchaseForm, SalesForm, StockForm } from './inventory-forms';
-import { ErrorText, Muted, Page, Panel, Section, SyncQuery, friendlyError, useSyncing } from './ui';
+import { ErrorText, Muted, Page, Panel, Section, SyncQuery, useSyncing } from './ui';
 import {
   ProductDetailTable,
   ProductTable,
@@ -69,7 +69,7 @@ export function ProductDetailPage() {
   const { syncing, syncError } = useSyncing();
   const product = useProductBySku(sku);
 
-  if (!sku) {
+  if (!sku?.trim()) {
     return (
       <Page title="Product">
         <ErrorText>Missing product SKU.</ErrorText>
@@ -87,17 +87,15 @@ export function ProductDetailPage() {
         <Anchor component={Link} to={routes.products} size="sm">
           ← Items
         </Anchor>
-        {syncError ? (
-          <ErrorText>{syncError}</ErrorText>
-        ) : product.error ? (
-          <ErrorText>{friendlyError(product.error.message)}</ErrorText>
-        ) : syncing && !row ? (
-          <Muted>Loading…</Muted>
-        ) : !row ? (
-          <Muted>No product found for SKU {sku}.</Muted>
-        ) : (
-          <ProductDetailTable row={row} />
-        )}
+        <SyncQuery
+          syncing={syncing}
+          syncError={syncError}
+          error={product.error}
+          data={product.data}
+          empty={<Muted>No product found for SKU {sku}.</Muted>}
+        >
+          {(rows) => <ProductDetailTable row={rows[0]} />}
+        </SyncQuery>
       </Panel>
     </Page>
   );

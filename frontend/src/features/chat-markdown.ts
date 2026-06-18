@@ -1,6 +1,18 @@
 import { marked } from 'marked';
 
-marked.use({ breaks: true, gfm: true });
+marked.use({
+  breaks: true,
+  gfm: true,
+  renderer: {
+    html({ text }: { text: string }) {
+      // ponytail: block raw HTML from LLM output; upgrade to DOMPurify if rich HTML needed
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    },
+  },
+});
 
 /**
  * Port of jotaweb/shell/web/static/markdown.js — converts WhatsApp-style emphasis
