@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
@@ -58,6 +59,11 @@ HAS_FIGURE = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+# Backticks or "SKU X" — inventory SKUs are short alphanumeric + hyphen.
+SKU_IN_OUTPUT = re.compile(
+    r"`([^`]+)`|(?:\bSKU\s+)([A-Za-z0-9][A-Za-z0-9-]*)",
+    re.IGNORECASE,
+)
 
 _FIGURE_RULES = (
     (STOCK_QUESTION, frozenset({"query_stock"}),
@@ -110,16 +116,56 @@ def _latest_user_prompt(ctx: RunContext) -> str | None:
     return None
 
 
-def _tool_called_this_turn(ctx: RunContext, names: frozenset[str]) -> bool:
+def _tool_calls_this_turn(ctx: RunContext, names: frozenset[str]) -> list[ToolCallPart]:
+    calls: list[ToolCallPart] = []
     for msg in reversed(ctx.messages):
         if isinstance(msg, ModelRequest) and any(isinstance(p, UserPromptPart) for p in msg.parts):
-            return False
+            break
         if not isinstance(msg, ModelResponse):
             continue
         for part in msg.parts:
             if isinstance(part, ToolCallPart) and part.tool_name in names:
-                return True
-    return False
+                calls.append(part)
+    return calls
+
+
+def _tool_called_this_turn(ctx: RunContext, names: frozenset[str]) -> bool:
+    return bool(_tool_calls_this_turn(ctx, names))
+
+
+def _tool_call_args(part: ToolCallPart) -> dict:
+    args = part.args
+    if isinstance(args, dict):
+        return args
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _normalize_sku(sku: str) -> str:
+    return sku.strip().upper()
+
+
+def _write_tool_skus_this_turn(ctx: RunContext) -> set[str]:
+    skus: set[str] = set()
+    for part in _tool_calls_this_turn(ctx, WRITE_TOOLS):
+        sku = _tool_call_args(part).get("sku")
+        if isinstance(sku, str) and sku.strip():
+            skus.add(_normalize_sku(sku))
+    return skus
+
+
+def _skus_mentioned_in_output(output: str) -> set[str]:
+    skus: set[str] = set()
+    for match in SKU_IN_OUTPUT.finditer(output):
+        token = match.group(1) or match.group(2)
+        if token and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", token.strip()):
+            skus.add(_normalize_sku(token))
+    return skus
 
 
 def _is_clarifying_question(output: str) -> bool:
@@ -145,6 +191,26 @@ def _validate_write_uses_tool(ctx: RunContext, output: str) -> None:
     )
 
 
+def _validate_write_reply_matches_tools(ctx: RunContext, output: str) -> None:
+    """After write tools run, reply must not narrate figures for unrelated SKUs."""
+    acted = _write_tool_skus_this_turn(ctx)
+    if not acted:
+        return
+    mentioned = _skus_mentioned_in_output(output)
+    if not mentioned:
+        return
+    rogue = mentioned - acted
+    if not rogue:
+        return
+    if not (HAS_FIGURE.search(output) or FINANCIAL_FIGURES.search(output)):
+        return
+    raise ModelRetry(
+        "You called write tools this turn but your reply discusses different SKUs "
+        f"({', '.join(sorted(rogue))}) than the ones you updated "
+        f"({', '.join(sorted(acted))}). Summarize only the tool results for the SKUs you wrote."
+    )
+
+
 def _validate_figures_use_fresh_tool(ctx: RunContext, output: str) -> None:
     user_text = _latest_user_prompt(ctx)
     if not user_text or not HAS_FIGURE.search(output):
@@ -163,5 +229,6 @@ async def output_guardrails_handler(ctx: RunContext, output: str) -> str:
     if not stripped:
         raise ModelRetry("Your response was empty. Provide a text answer to the user or call a tool.")
     _validate_write_uses_tool(ctx, stripped)
+    _validate_write_reply_matches_tools(ctx, stripped)
     _validate_figures_use_fresh_tool(ctx, stripped)
     return output

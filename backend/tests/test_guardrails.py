@@ -16,11 +16,21 @@ from pydantic_ai.messages import (
 from ai.guardrails import InputGuardrailError, check_input, output_guardrails_handler, sanitize_user_text
 
 
-def _ctx(user_text: str, *, tool: str | None = None, text: str = "") -> SimpleNamespace:
+def _ctx(
+    user_text: str,
+    *,
+    tool: str | None = None,
+    tool_args: dict | None = None,
+    tools: list[tuple[str, dict]] | None = None,
+    text: str = "",
+) -> SimpleNamespace:
     messages: list = [ModelRequest(parts=[UserPromptPart(content=user_text)])]
     parts: list = []
-    if tool is not None:
-        parts.append(ToolCallPart(tool_name=tool, args="{}"))
+    if tools:
+        for name, args in tools:
+            parts.append(ToolCallPart(tool_name=name, args=args))
+    elif tool is not None:
+        parts.append(ToolCallPart(tool_name=tool, args=tool_args or {}))
     if text:
         parts.append(TextPart(content=text))
     if parts:
@@ -162,3 +172,45 @@ def test_write_clarifying_question_without_tool_passes():
     ctx = _ctx(msg)
     out = _run(ctx, "What SKU and unit should I use for this product?")
     assert "SKU" in out
+
+
+def test_write_reply_with_unrelated_financial_skus_retries():
+    """Regression: PO tools ran for HV001/BB001 but reply summarized CB-01/GM-IP."""
+    msg = "create a PO for 100 hv001 (unit cost = 1.5 usd) and 50 bb001, unit cost = 2usd"
+    ctx = _ctx(
+        msg,
+        tools=[
+            ("create_purchase_order", {"sku": "HV001", "quantity": 100, "total_cost": 150}),
+            ("create_purchase_order", {"sku": "BB001", "quantity": 50, "total_cost": 100}),
+        ],
+    )
+    out = (
+        "Here's an updated summary of the financials and profit margins:\n\n"
+        "- **Craft Beer — IPA 12oz** (`CB-01`):\n"
+        "  - **Total Cost:** $800.00\n"
+        "  - **Profit Margin:** **-95.00%**\n\n"
+        "- **German IPA** (`GM-IP`):\n"
+        "  - **Total Cost:** $300.00\n"
+        "  - **Profit Margin:** **-100.00%**"
+    )
+    with pytest.raises(ModelRetry):
+        _run(ctx, out)
+
+
+def test_write_reply_summarizing_acted_skus_passes():
+    msg = "create a PO for 100 hv001 and 50 bb001"
+    ctx = _ctx(
+        msg,
+        tools=[
+            ("create_purchase_order", {"sku": "HV001", "quantity": 100, "total_cost": 150}),
+            ("create_purchase_order", {"sku": "BB001", "quantity": 50, "total_cost": 100}),
+        ],
+    )
+    out = (
+        "Purchase orders created:\n"
+        "- `HV001`: 100 units for **$150.00** total\n"
+        "- `BB001`: 50 units for **$100.00** total"
+    )
+    result = _run(ctx, out)
+    assert "HV001" in result
+    assert "BB001" in result

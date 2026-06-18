@@ -6,9 +6,10 @@ from typing import Any
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
+from ai.constants import THINKING_PLACEHOLDER
 from services.db import fetch_all
 
-CHAT_HISTORY_LIMIT = 20
+CHAT_HISTORY_LIMIT = 5
 
 
 def rows_to_message_history(rows: list[dict[str, Any]]) -> list[ModelMessage]:
@@ -16,7 +17,7 @@ def rows_to_message_history(rows: list[dict[str, Any]]) -> list[ModelMessage]:
     history: list[ModelMessage] = []
     for row in rows:
         content = (row.get("content") or "").strip()
-        if not content:
+        if not content or content == THINKING_PLACEHOLDER:
             continue
         role = row.get("role")
         if role == "user":
@@ -39,6 +40,7 @@ def load_chat_history(
         exclude_clause = "AND chat_message_id <> %s"
         params.append(exclude_message_id)
 
+    params.append(THINKING_PLACEHOLDER)
     params.append(limit)
     rows = fetch_all(
         f"""
@@ -46,6 +48,8 @@ def load_chat_history(
         FROM chat_message
         WHERE user_id = %s
         {exclude_clause}
+          AND trim(content) <> ''
+          AND content <> %s
         ORDER BY chat_message_id DESC
         LIMIT %s
         """,
