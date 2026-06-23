@@ -1,8 +1,14 @@
-export { isThinkingPlaceholder, THINKING_PLACEHOLDER } from './chat-constants';
-export { sendChatMessage } from './chat';
+export {
+  clientMessageId,
+  isThinkingPlaceholder,
+  sendChatMessage,
+  THINKING_PLACEHOLDER,
+  useChatMessages,
+  type ChatCollection,
+} from './chat';
+export { PowerSyncManager } from './powersync-manager';
 export { useSyncStatus } from './PowerSyncProvider';
 export {
-  useChatMessages,
   useDashboard,
   useProductBySku,
   usePurchaseOrders,

@@ -2,7 +2,7 @@ import { column, Schema, Table } from '@powersync/web';
 
 /**
  * Snowflake ids are `column.text` — JSON numbers lose precision in JS.
- * Sync rules cast Postgres bigint columns to text (see powersync/config.yaml).
+ * Sync streams cast Postgres bigint columns to text (see powersync/config.yaml).
  */
 const product = new Table({
   product_id: column.text,

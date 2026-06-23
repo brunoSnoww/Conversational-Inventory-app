@@ -2,8 +2,8 @@ import { PowerSyncContext } from '@powersync/react';
 import type { PowerSyncDatabase } from '@powersync/web';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { disconnectPowerSync, initPowerSync } from './db';
 import { syncLog } from './logger';
+import { PowerSyncManager } from './powersync-manager';
 
 type SyncStatus = 'off' | 'connecting' | 'ready' | 'error';
 
@@ -32,6 +32,7 @@ export function InventoryPowerSyncProvider({ enabled, accessToken, userId, child
 
   useEffect(() => {
     let cancelled = false;
+    const manager = PowerSyncManager.getInstance();
 
     async function run() {
       setDatabase(null);
@@ -39,14 +40,14 @@ export function InventoryPowerSyncProvider({ enabled, accessToken, userId, child
 
       if (!enabled || !accessToken || !userId) {
         setStatus('off');
-        await disconnectPowerSync();
+        await manager.disconnect();
         return;
       }
 
       setStatus('connecting');
       syncLog.info('provider connecting', { userId });
       try {
-        const db = await initPowerSync(() => accessToken, userId);
+        const db = await manager.initialize(() => accessToken, userId);
         if (cancelled) {
           syncLog.warn('provider cancelled after init', { userId });
           return;

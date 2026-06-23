@@ -1,17 +1,11 @@
 /**
  * Reactive read hooks — display truth from PowerSync local SQLite.
  *
- * Two read styles coexist (both reactive, both from the synced replica):
- * - `useDashboard`: raw SQLite query via @powersync/react. Right tool for a
- *   multi-table aggregate (stock + PO + SO) over decimal-as-text columns —
- *   SQLite does the coercion + grouping that a TanStack DB query builder can't.
- * - `useChatMessages`: TanStack DB live query over the `chat_message`
- *   collection. Pairs with optimistic inserts (see `chat.ts`).
+ * `useDashboard` uses raw SQLite via @powersync/react for multi-table aggregates
+ * (stock + PO + SO) over decimal-as-text columns. Chat reads live in `chat.ts`.
  */
 import { useQuery as usePowerSyncQuery } from '@powersync/react';
-import { useLiveQuery } from '@tanstack/react-db';
 
-import { tryGetChatCollection } from './collections';
 import {
   PRODUCTS_DASHBOARD,
   PRODUCT_BY_SKU,
@@ -100,15 +94,4 @@ export function useSalesOrders() {
 
 export function useStockMovements() {
   return usePowerSyncQuery<StockMovementRow>(STOCK_MOVEMENTS);
-}
-
-export function useChatMessages() {
-  const collection = tryGetChatCollection();
-  return useLiveQuery(
-    (q) =>
-      collection
-        ? q.from({ m: collection }).orderBy(({ m }) => m.created_at, 'asc')
-        : null,
-    [collection],
-  );
 }

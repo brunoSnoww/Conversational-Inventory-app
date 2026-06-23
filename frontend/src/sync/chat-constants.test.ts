@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isThinkingPlaceholder, THINKING_PLACEHOLDER } from './chat-constants';
+import { isThinkingPlaceholder, THINKING_PLACEHOLDER } from './chat';
 
 describe('chat-constants', () => {
   it('detects thinking placeholder', () => {

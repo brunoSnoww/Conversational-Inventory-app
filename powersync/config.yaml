@@ -1,6 +1,7 @@
 # PowerSync service config — local dev. Matches inventory/docker-compose.yml
+# Sync Streams (edition 3). Migrated from legacy sync_rules bucket "inventory".
 config:
-  edition: 2
+  edition: 3
 
 replication:
   connections:
@@ -19,10 +20,6 @@ client_auth:
   audience:
     - 'http://localhost:2000'
     - 'https://canine-scrambled-reseller.ngrok-free.dev'
-
-
-
-
   jwks:
     keys:
       - kty: "oct"
@@ -39,53 +36,50 @@ healthcheck:
     use_filesystem: true
     use_http: true
 
-sync_rules:
-  content: |
-    bucket_definitions:
-      inventory:
-        parameters:
-          - SELECT request.user_id() AS user_id
-        data:
-          - |
-            SELECT product_id::text AS id,
-              product_id::text AS product_id,
-              user_id::text AS user_id,
-              name, description, sku, unit::text AS unit,
-              created_at, updated_at
-            FROM product
-            WHERE user_id::text = bucket.user_id
-          - |
-            SELECT purchase_order_id::text AS id,
-              purchase_order_id::text AS purchase_order_id,
-              user_id::text AS user_id,
-              product_id::text AS product_id,
-              quantity, total_cost,
-              guid::text AS guid, created_at
-            FROM purchase_order
-            WHERE user_id::text = bucket.user_id
-          - |
-            SELECT sales_order_id::text AS id,
-              sales_order_id::text AS sales_order_id,
-              user_id::text AS user_id,
-              product_id::text AS product_id,
-              quantity, unit_price,
-              guid::text AS guid, created_at
-            FROM sales_order
-            WHERE user_id::text = bucket.user_id
-          - |
-            SELECT stock_movement_id::text AS id,
-              stock_movement_id::text AS stock_movement_id,
-              user_id::text AS user_id,
-              product_id::text AS product_id,
-              quantity_delta,
-              unit_cost, source::text AS source,
-              source_id::text AS source_id, created_at
-            FROM stock_movement
-            WHERE user_id::text = bucket.user_id
-          - |
-            SELECT chat_message_id::text AS id,
-              chat_message_id::text AS chat_message_id,
-              user_id::text AS user_id,
-              role::text AS role, content, created_at
-            FROM chat_message
-            WHERE user_id::text = bucket.user_id
+streams:
+  inventory:
+    auto_subscribe: true
+    queries:
+      - |
+        SELECT product_id::text AS id,
+          product_id::text AS product_id,
+          user_id::text AS user_id,
+          name, description, sku, unit::text AS unit,
+          created_at, updated_at
+        FROM product
+        WHERE user_id::text = auth.user_id()
+      - |
+        SELECT purchase_order_id::text AS id,
+          purchase_order_id::text AS purchase_order_id,
+          user_id::text AS user_id,
+          product_id::text AS product_id,
+          quantity, total_cost,
+          guid::text AS guid, created_at
+        FROM purchase_order
+        WHERE user_id::text = auth.user_id()
+      - |
+        SELECT sales_order_id::text AS id,
+          sales_order_id::text AS sales_order_id,
+          user_id::text AS user_id,
+          product_id::text AS product_id,
+          quantity, unit_price,
+          guid::text AS guid, created_at
+        FROM sales_order
+        WHERE user_id::text = auth.user_id()
+      - |
+        SELECT stock_movement_id::text AS id,
+          stock_movement_id::text AS stock_movement_id,
+          user_id::text AS user_id,
+          product_id::text AS product_id,
+          quantity_delta,
+          unit_cost, source::text AS source,
+          source_id::text AS source_id, created_at
+        FROM stock_movement
+        WHERE user_id::text = auth.user_id()
+      - |
+        SELECT chat_message_id::text AS id,
+          chat_message_id::text AS chat_message_id,
+          user_id::text AS user_id,
+          role::text AS role, content, created_at
+        FROM chat_message
+        WHERE user_id::text = auth.user_id()
