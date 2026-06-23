@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from inventory_api.http import empty_patch_response, run_inventory, stock_movement_from_row
-from inventory_api.models import Product, ProductFinancialsView, ProductStockView, PurchaseOrder, SalesOrder
+from inventory_api.models import Product, ProductFinancialsView, PurchaseOrder, SalesOrder
 from inventory_api.serializers import (
     FinancialsSerializer,
     ProductSerializer,
@@ -25,14 +24,12 @@ from inventory_api.serializers import (
     StockSerializer,
 )
 from services import inventory as svc
+from services.container import build_inventory_services
 
 
 class ProductViewSet(viewsets.ViewSet):
     def _aggregate_map(self, user_id: int, product_ids: list[int] | None = None) -> dict[int, ProductFinancialsView]:
-        qs = ProductFinancialsView.objects.filter(user_id=user_id)
-        if product_ids is not None:
-            qs = qs.filter(product_id__in=product_ids)
-        return {int(row.product_id): row for row in qs}
+        return build_inventory_services().reporting_repo.get_financials_map(user_id, product_ids)
 
     def list(self, request):
         qs = Product.objects.filter(user_id=request.user.user_id).order_by("-product_id")
@@ -108,8 +105,8 @@ class ProductViewSet(viewsets.ViewSet):
 
 class StockViewSet(viewsets.ViewSet):
     def list(self, request):
-        qs = ProductStockView.objects.filter(user_id=request.user.user_id).order_by("sku")
-        return Response(StockSerializer(qs, many=True).data)
+        rows = build_inventory_services().stock_repo.list_stock_levels(request.user.user_id)
+        return Response(StockSerializer(rows, many=True).data)
 
     @action(detail=False, methods=["post"], url_path="add")
     def add(self, request):
@@ -339,9 +336,9 @@ class SalesOrderViewSet(viewsets.ViewSet):
 
 class FinancialsViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
-        row = ProductFinancialsView.objects.filter(
-            user_id=request.user.user_id
-        ).filter(Q(product_id=pk) | Q(sku__iexact=pk)).first()
+        row = build_inventory_services().reporting_repo.get_financials_by_id_or_sku(
+            request.user.user_id, pk
+        )
         if row is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(FinancialsSerializer(row).data)

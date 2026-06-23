@@ -1,0 +1,18 @@
+# Production / demo deploy — gunicorn, no dev volume mount.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    command:
+      - gunicorn
+      - config.wsgi:application
+      - -b
+      - 0.0.0.0:8000
+      - --workers
+      - "2"
+      - --threads
+      - "4"
+      - --timeout
+      - "120"
+    volumes: []
+    environment:
+      DJANGO_DEBUG: "false"

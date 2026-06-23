@@ -38,7 +38,7 @@ services:
       retries: 15
 
   powersync:
-    image: journeyapps/powersync-service:1.19.0
+    image: journeyapps/powersync-service:1.20.0
     command: ["start", "-r", "unified"]
     ports:
       - "2000:2000"
