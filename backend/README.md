@@ -82,10 +82,15 @@ Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL
 
 | Module | Role |
 |--------|------|
-| `services/inventory.py` | Domain logic + inline SQL (products, stock, orders, financials) |
+| `domain/models.py` | Rich domain entities (Product, StockMovement, orders) with validation rules |
+| `domain/exceptions.py` | Domain errors (`UnknownProduct`, `InsufficientStock`, …) |
+| `services/repositories/` | SQL/ORM persistence — returns domain models |
+| `services/services/` | Business orchestration, `@transaction.atomic`, DI |
+| `services/dtos/` | Typed service response objects |
+| `services/inventory.py` | Backward-compatible `*_sync` facade for views and AI tools |
+| `services/container.py` | Wires repositories → services |
 | `services/db.py` | Postgres helpers (`fetch_one`, `fetch_all`) |
-| `services/exceptions.py` | Shared domain errors |
-| `inventory_api/` | DRF viewsets, serializers, models (read-only views) |
+| `inventory_api/` | DRF viewsets, serializers, unmanaged ORM models (read views) |
 | `sync_api/` | PowerSync JWT, upload connector, write-checkpoint proxy |
 | `ai/` | pydantic-ai agent, guardrails, tools |
 
