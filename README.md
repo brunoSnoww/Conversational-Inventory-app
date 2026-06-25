@@ -138,9 +138,9 @@ display data, and writes never touch the read cache.
 ┌──────────────────────────── BROWSER ────────────────────────────-┐
 │                                                                  │
 │  React UI                                                        │
-│   ├─ useDashboard()      ─┐                                      │
-│   ├─ usePurchaseOrders() ─┤ reactive reads                       │
-│   ├─ useChatMessages()   ─┘                                      │
+│   ├─ useDashboardRead()  ─┐  (hoisted — one subscription on / + /products)
+│   ├─ usePurchaseOrders() ─┤  flat SELECTs on local SQLite
+│   ├─ useChatMessages()   ─┘
 │   │                         │                                    │
 │   │                    ┌────▼─────────────────┐                  │
 │   │                    │  Local SQLite        │  ← PowerSync     │
@@ -165,7 +165,7 @@ display data, and writes never touch the read cache.
    ┌──────────────────────────-┴───────────────────▼──────────────-┐
    │                     Postgres  (db_inventory)                  │
    │   product · purchase_order · sales_order · stock_movement     │
-   │   chat_message · views (product_financials_view)              │
+   │   product_financials_summary · chat_message · views           │
    └──────────────────────────────────────────────────────────────-┘
 ```
 
@@ -176,7 +176,7 @@ display data, and writes never touch the read cache.
 | Domain | `backend/services/inventory.py` | Ledger writes, oversell checks, read models |
 | Agent | `backend/ai/` | pydantic-ai loop, tools, guardrails, runner |
 | Sync (server) | `backend/sync_api/` | Mint PowerSync JWT + upload connector |
-| Sync (engine) | `powersync/config.yaml` | Replication, auth, sync rules |
+| Sync (engine) | `powersync/config.yaml` | Replication, auth, sync streams (edition 3) |
 | Sync (client) | `frontend/src/sync/` | Schema, connector, collections, hooks |
 | UI | `frontend/src/features/` | Mantine tables + chat |
 
@@ -201,15 +201,21 @@ on_hand = SUM(quantity_delta) per (user_id, product_id)
 Order edits/deletes never mutate ledger rows — they append a **compensating** movement.
 The ledger is the audit log; the current number is always a fold over it.
 
-**Read models are views, not columns.** `product_financials_view` (migration `000006`)
-joins the ledger + orders into one per-SKU row: stock on hand, qty bought/sold,
-cost, revenue, profit. Financials are SQL, never LLM arithmetic.
+**Read models on Postgres, flat rows on the client.** Trigger-maintained
+`product_financials_summary` (migration `000007`) holds per-SKU stock, cost,
+revenue, profit, and margin. Triggers on `product`, orders, and `stock_movement`
+keep it current; `product_financials_view` is a thin wrapper for REST/AI.
+Denormalized `product_sku` / `product_name` on orders and movements (migration
+`000008`) let the client list PO/SO/stock without JOINs — the standard
+PowerSync-friendly pattern: denormalize on Postgres so each sync stream hits one flat table.
+
+Financials are SQL, never LLM arithmetic.
 
 **Conventions worth knowing:**
 - **Timestamp-embedded ids** — `gen_random_with_timestamp_id()` (snowflake-ish), not bare serials. Sortable by creation, k-sortable across tables.
 - **Per-user isolation** — every table carries `user_id`; owner triggers reject cross-user order/movement inserts at the DB layer.
 - **Idempotent writes** — `purchase_order`/`sales_order` have a `guid` with `ON CONFLICT DO NOTHING` (safe retries).
-- **Snowflake ids serialize as text** — JS `number` loses precision past 2^53, so sync rules cast every bigint to `::text`.
+- **Snowflake ids serialize as text** — JS `number` loses precision past 2^53, so sync streams cast every bigint to `::text`.
 
 ---
 
@@ -219,31 +225,34 @@ PowerSync replicates user-scoped Postgres rows down to an in-browser SQLite data
 over a websocket, and ships local writes back up through a connector. It is the **only**
 source of display data on the client.
 
-**Down (server → client).** `powersync/config.yaml` defines one [bucket](https://docs.powersync.com/sync/rules/organize-data-into-buckets) parameterised by
-the authenticated user:
+**Down (server → client).** `powersync/config.yaml` defines one user-scoped [sync stream](https://docs.powersync.com/sync/streams/overview) with `auto_subscribe: true` (same “sync everything on connect” behavior as the old bucket):
 
 ```yaml
-bucket_definitions:
+config:
+  edition: 3
+
+streams:
   inventory:
-    parameters: SELECT request.user_id() AS user_id   # from the PowerSync JWT
-    data:
-      - SELECT ... FROM product          WHERE user_id::text = bucket.user_id
-      - SELECT ... FROM purchase_order   WHERE user_id::text = bucket.user_id
-      - SELECT ... FROM sales_order      WHERE user_id::text = bucket.user_id
-      - SELECT ... FROM stock_movement   WHERE user_id::text = bucket.user_id
-      - SELECT ... FROM chat_message     WHERE user_id::text = bucket.user_id
+    auto_subscribe: true
+    queries:
+      - SELECT ... FROM product_financials_summary WHERE user_id::text = auth.user_id()
+      - SELECT ... FROM purchase_order        WHERE user_id::text = auth.user_id()  -- includes product_sku, product_name
+      - SELECT ... FROM sales_order           WHERE user_id::text = auth.user_id()
+      - SELECT ... FROM stock_movement        WHERE user_id::text = auth.user_id()
+      - SELECT ... FROM chat_message          WHERE user_id::text = auth.user_id()  -- last 100 rows (CHAT_SYNC_LIMIT)
 ```
 
-Postgres `wal_level=logical` + a `powersync` publication (migration `000005`) stream
-changes; PowerSync incrementally pushes only the diff. Sync rules can't `JOIN`/`GROUP BY`,
-so **base tables replicate, aggregates are computed client-side** (see Frontend below).
+Postgres `wal_level=logical` + a `powersync` publication (migration `000005`, extended
+in `000007`) stream changes; PowerSync incrementally pushes only the diff. Stream
+queries target **flat tables** — no JOIN/GROUP BY in sync config; aggregation and
+denormalization live on Postgres via triggers.
 
 **Up (client → server).** Reads and writes use different doors on purpose:
 - **Inventory writes** (product, PO, SO, manual stock) go through **Django REST** — they need oversell checks, ledger side effects, and validation that don't belong on the client.
 - **Chat writes** ride the **PowerSync upload connector**: an optimistic insert into the local `chat_message` collection → `POST /api/sync/mutations/` → the server runs the agent and inserts the assistant reply → it replicates back down.
 
 **Auth.** `POST /api/auth/login/` → Django JWT. `POST /api/sync/token/` mints a short
-PowerSync JWT (HS256) whose `user_id` claim drives bucket scoping. Keys must match
+PowerSync JWT (HS256) whose `sub` claim is the user id (`auth.user_id()` in streams). Keys must match
 between `backend/sync_api/jwt.py` and `powersync/config.yaml`.
 
 **Two Postgres databases.** The app DB (`db_inventory`) holds your tables and logical
@@ -259,9 +268,8 @@ Two reactive read styles, both reading the **same local SQLite replica**, never 
 ```
 PowerSync replica (SQLite)
         │
-        ├── @powersync/react  useQuery(SQL)         → useDashboard, usePurchaseOrders,
-        │      raw SQL, multi-table aggregates         useSalesOrders, useStockMovements
-        │      (GROUP BY / JOIN / decimal coercion)
+        ├── @powersync/react  useQuery(SQL)         → useDashboardRead, usePurchaseOrders,
+        │      flat SELECT on summary + denorm cols   useSalesOrders, useStockMovements
         │
         └── @tanstack/react-db  useLiveQuery         → useChatMessages
                typed collection + optimistic inserts
@@ -271,10 +279,11 @@ PowerSync replica (SQLite)
   (`@tanstack/powersync-db-collection`, eager sync). Chat sends are **optimistic**:
   `collection.insert(...)` paints the user bubble instantly, then the connector uploads
   and the assistant reply streams back in — all through the same live query.
-- **Raw `@powersync/react` `useQuery`** handles the dashboard, because the per-SKU
-  financials row is a multi-table aggregate over decimal-as-text columns. SQLite does the
-  `GROUP BY` + coercion that a query-builder can't (`frontend/src/sync/queries.ts`
-  mirrors `product_financials_view`).
+- **Raw `@powersync/react` `useQuery`** handles inventory reads: dashboard reads
+  `product_financials_summary`; order/movement lists read denormalized columns — no
+  client-side JOIN or GROUP BY (`frontend/src/sync/hooks.ts`).
+- **`DashboardReadProvider`** hoists `useDashboard` so `/` and `/products` share one
+  reactive subscription across navigation.
 - **TanStack Query** (`useInventory.ts`) is used *only* for REST write mutations. The
   mutations deliberately do **not** invalidate anything — see below.
 
@@ -310,8 +319,13 @@ math — there's a `calculator` tool for arithmetic.
 
 **Runner** (`backend/ai/runner.py`) — single persistent asyncio loop (pydantic-ai binds
 its httpx client to the first loop it sees; WSGI threads would otherwise each spawn one).
-Maps provider `401`/`429` to friendly chat replies instead of 500s. Chat blocks ~20–30s
-per turn while the agent runs inside the mutation handler.
+Maps provider `401`/`429` to friendly chat replies instead of 500s. Upload handler
+persists the user message + thinking placeholder, then **`schedule_coro`** runs the
+agent on the background loop — HTTP returns in under a second; the LLM turn (~20–30s)
+completes asynchronously and the assistant row replicates down.
+
+See **[Improvements](#improvements-roadmap-to-production-scale)** for the path
+toward production-grade AI orchestration (Temporal, skills, expanded guardrails).
 
 ---
 
@@ -349,6 +363,91 @@ told — the reactive read layer observes the data, not the operation. Same prop
 **offline** (writes queue, sync on reconnect) and **multi-tab / multi-device** (every
 client converges on the same replica). This is why `useInventory.ts` mutations have no
 `onSuccess: invalidate` — and the comment there says exactly that.
+
+---
+
+## Improvements (roadmap to production scale)
+
+This demo follows a **production-shaped architecture** at portfolio scope: Postgres as
+truth, PowerSync for offline-first reads, tools that own mutations, guardrails that block
+hallucinated figures, and **server-maintained read models** synced as flat rows. The
+tables below map what exists today, what a full-scale mobile + banking stack would add,
+and the sequenced work to close the gap without a big-bang rewrite.
+
+Deep dives: [AI layer comparison](docs/inventory_vs_octopus_ai.md) · [PowerSync read patterns](docs/powersync_reads_and_octopus_patterns.md) · [architecture target doc](docs/ARCHITECTURE_CURRENT_AND_TARGET.md)
+
+### North star (patterns we are converging on)
+
+| Pattern | Production ideal | Inventory today |
+|---------|------------------|-----------------|
+| Display reads | Local SQLite via PowerSync — **no REST refetch on navigation** | ✅ Same |
+| Write path | Service layer + durable workflows at scale | ✅ Django `services/` + REST; chat via sync mutations |
+| Read models | Trigger-maintained summary tables + denormalized sync columns | ✅ `product_financials_summary` + denorm labels |
+| Sync queries | Flat `SELECT … WHERE` per table; no JOIN in stream config | ✅ Mostly; see pagination/window gaps below |
+| Volume control | Session-scoped chat, time partitions, cursor pagination | ⏳ Partial — chat capped at 100 rows |
+| AI | pydantic-ai + tools + guardrails; durable workflow for chat turns | ✅ Same philosophy; in-process agent, no Temporal yet |
+
+Navigation and cache invalidation are **already correct** — a production app would not
+change that story. The remaining work is **what gets synced**, **how much history the
+client holds**, and **how durable/scalable the agent runtime is**.
+
+### Read path & PowerSync — sequenced priority
+
+Work in this order. Each step is independently shippable.
+
+| Priority | Item | Status | What it does | Production precedent |
+|----------|------|--------|--------------|----------------------|
+| **1** | Server summary + denorm tables | ✅ Done | `product_financials_summary` (triggers on ledger/orders); `product_sku`/`product_name` on PO/SO/movements | Daily balance rollups, merchant aggregates, payment-row denorm |
+| **2** | Hoist `useDashboard` | ✅ Done | `DashboardReadProvider` — one subscription for `/` + `/products` | Single layout-level DB subscription in app shell |
+| **3** | Chat sync cap (50–100 rows) | ✅ Done | Stream syncs last **100** rows (`CHAT_SYNC_LIMIT`); agent still loads **5** turns for LLM context | Session/window bounds on messaging sync |
+| **4** | PO/SO/movement **local** LIMIT + load-more | ⏳ Next | `ORDER BY … DESC LIMIT 50` in hooks; "Load more" from local SQLite cursor | Cursor pagination on local reads (`WHERE id > ? LIMIT N`) |
+| **5** | **90-day sync window** on orders/movements | ⏳ Planned | Cap replication in `powersync/config.yaml` (`WHERE created_at >= now() - interval '90 days'`) | Time-bounded payment/order partitions |
+| **6** | Session-scoped chat + yearly partitions | ⏳ If product grows | JWT `chat_session_id` bucket; yearly partition wildcards on `chat_message` | Session-scoped messaging buckets, `*_20%` partition streams |
+
+**Why this order:** (1–3) remove the worst client/sync cost at demo scale. (4) bounds UI work without changing replication. (5) bounds device storage and initial sync. (6) only matters beyond a single-thread chat demo or years of order history.
+
+**Dual-bucket rule:** keep syncing **base tables** for writes and audit, plus **summary/rollup tables** for dashboards. Do not drop raw `purchase_order` / `stock_movement` rows until a rollup bucket replaces a screen entirely.
+
+### AI architecture — sequenced toward production agent platform
+
+Inventory AI is a **minimal solo agent**: pydantic-ai loop, tools call the real write path,
+figure guardrails, calculator for arithmetic. A production banking agent adds durable
+workflows, skills, and richer guardrails.
+
+| Priority | Item | Status | Production target | Notes |
+|----------|------|--------|-------------------|-------|
+| **A** | Tools → `services/inventory.py` facade | ✅ Done | Tools → durable workflow → service API | Single write path for REST + chat |
+| **B** | Figure + write-intent guardrails | ✅ Done | Multi-category output guardrails | Current guardrails cover SKU/profit domain |
+| **C** | Async agent after upload | ✅ Partial | Durable chat-turn workflow | `schedule_coro` — HTTP returns fast; agent still in-process |
+| **D** | Tool idempotency (`tool_guid`) | ✅ Partial | Workflow idempotency keys | PO/SO done; extend to `add_stock`, `register_product` |
+| **E** | Durable chat turn job | ⏳ Planned | Temporal worker + activity | Celery/RQ acceptable in monolith; Temporal if multi-service |
+| **F** | Skills + nested toolsets | ⏳ Planned | Skill-aware, feature-controlled toolsets | When tool count / prompt token cost grows |
+| **G** | Expanded guardrails | ⏳ Planned | Task hallucination, tag validation, URL allowlists | Split `guardrails.py` → package |
+| **H** | Structured output (rich blocks) | ❌ Defer | Protobuf + channel adapters | Markdown chat is fine until rich messaging UI |
+| **I** | Dynamic model routing | ❌ Defer | Feature-flag model racing | Single `INVENTORY_AGENT_MODEL` is enough for demo |
+
+**Agent history alignment:** server loads **5** non-placeholder turns (`CHAT_HISTORY_LIMIT`); client syncs **100** rows (`CHAT_SYNC_LIMIT`) for UI scrollback. Production would add session-scoped sync buckets before unbounded chat history.
+
+**Interview one-liner:**
+
+> pydantic-ai agent — tools call the real write path, guardrails enforce fresh data before numbers, UI reacts to Postgres via PowerSync — without Temporal, skills, or structured message blocks.
+
+### What we explicitly defer (still valid for a portfolio demo)
+
+- Multi-service split (AI worker vs Django API)
+- PowerSync Cloud / RS256 JWT production hardening
+- WhatsApp / rich channel message formatting
+- Multi-agent intent routing (inventory uses one solo agent)
+- Yearly table partitions until order volume warrants it
+
+### Related docs
+
+| Doc | Contents |
+|-----|----------|
+| [docs/inventory_vs_octopus_ai.md](docs/inventory_vs_octopus_ai.md) | Side-by-side AI layer comparison |
+| [docs/powersync_reads_and_octopus_patterns.md](docs/powersync_reads_and_octopus_patterns.md) | Read models, navigation, sync patterns at scale |
+| [docs/ARCHITECTURE_CURRENT_AND_TARGET.md](docs/ARCHITECTURE_CURRENT_AND_TARGET.md) | Phased target architecture |
+| [docs/inventory_exam.md](docs/inventory_exam.md) | Q14–Q15 on trigger denorm + summary tables |
 
 ---
 
