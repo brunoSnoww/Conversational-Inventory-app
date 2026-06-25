@@ -1,18 +1,52 @@
 /**
  * Reactive read hooks — display truth from PowerSync local SQLite.
  *
- * `useDashboard` uses raw SQLite via @powersync/react for multi-table aggregates
- * (stock + PO + SO) over decimal-as-text columns. Chat reads live in `chat.ts`.
+ * Complex aggregates and JOINs live on Postgres (triggers + denormalized columns);
+ * the client runs flat SELECTs only.
  */
 import { useQuery as usePowerSyncQuery } from '@powersync/react';
 
-import {
-  PRODUCTS_DASHBOARD,
-  PRODUCT_BY_SKU,
-  PURCHASE_ORDERS,
-  SALES_ORDERS,
-  STOCK_MOVEMENTS,
-} from './queries';
+const PRODUCTS_DASHBOARD = `
+  SELECT
+    product_id,
+    sku,
+    name,
+    unit,
+    quantity_on_hand,
+    total_qty_purchased,
+    total_cost,
+    total_qty_sold,
+    total_revenue,
+    profit,
+    margin_percent
+  FROM product_financials_summary
+  ORDER BY sku ASC
+`;
+
+const PRODUCT_BY_SKU = `
+  SELECT *
+  FROM product
+  WHERE lower(sku) = lower(?)
+  LIMIT 1
+`;
+
+const PURCHASE_ORDERS = `
+  SELECT *
+  FROM purchase_order
+  ORDER BY created_at DESC
+`;
+
+const SALES_ORDERS = `
+  SELECT *
+  FROM sales_order
+  ORDER BY created_at DESC
+`;
+
+const STOCK_MOVEMENTS = `
+  SELECT *
+  FROM stock_movement
+  ORDER BY created_at DESC
+`;
 
 export type DashboardRow = {
   product_id: string;
@@ -38,10 +72,10 @@ export type PurchaseOrderRow = {
   product_id: string;
   quantity: string;
   total_cost: string;
+  product_sku: string;
+  product_name: string;
   guid: string;
   created_at: string;
-  sku: string;
-  product_name: string;
 };
 
 export type SalesOrderRow = {
@@ -50,10 +84,10 @@ export type SalesOrderRow = {
   product_id: string;
   quantity: string;
   unit_price: string;
+  product_sku: string;
+  product_name: string;
   guid: string;
   created_at: string;
-  sku: string;
-  product_name: string;
 };
 
 export type StockMovementRow = {
@@ -65,7 +99,7 @@ export type StockMovementRow = {
   source: string;
   source_id: string | null;
   created_at: string;
-  sku: string;
+  product_sku: string;
 };
 
 export type ProductRow = {

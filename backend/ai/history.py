@@ -6,10 +6,8 @@ from typing import Any
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from ai.constants import THINKING_PLACEHOLDER
+from ai.constants import CHAT_HISTORY_LIMIT, THINKING_PLACEHOLDER
 from services.db import fetch_all
-
-CHAT_HISTORY_LIMIT = 5
 
 
 def rows_to_message_history(rows: list[dict[str, Any]]) -> list[ModelMessage]:

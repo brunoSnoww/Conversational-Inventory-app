@@ -41,6 +41,8 @@ class PurchaseOrder(models.Model):
     product_id = models.BigIntegerField()
     quantity = models.DecimalField(max_digits=20, decimal_places=4)
     total_cost = models.DecimalField(max_digits=20, decimal_places=2)
+    product_sku = models.TextField()
+    product_name = models.TextField()
     guid = models.UUIDField()
     created_at = models.DateTimeField()
 
@@ -55,6 +57,8 @@ class SalesOrder(models.Model):
     product_id = models.BigIntegerField()
     quantity = models.DecimalField(max_digits=20, decimal_places=4)
     unit_price = models.DecimalField(max_digits=20, decimal_places=2)
+    product_sku = models.TextField()
+    product_name = models.TextField()
     guid = models.UUIDField()
     created_at = models.DateTimeField()
 
@@ -70,6 +74,7 @@ class StockMovement(models.Model):
     quantity_delta = models.DecimalField(max_digits=20, decimal_places=4)
     unit_cost = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
     source = models.CharField(max_length=32)
+    product_sku = models.TextField()
     source_id = models.BigIntegerField(null=True, blank=True)
     created_at = models.DateTimeField()
 
@@ -119,3 +124,23 @@ class ProductFinancialsView(models.Model):
     class Meta:
         managed = False
         db_table = "product_financials_view"
+
+
+class ProductFinancialsSummary(models.Model):
+    product_id = models.BigIntegerField(primary_key=True)
+    user_id = models.BigIntegerField()
+    sku = models.TextField()
+    name = models.TextField()
+    unit = models.CharField(max_length=10)
+    quantity_on_hand = models.DecimalField(max_digits=20, decimal_places=4)
+    total_qty_purchased = models.DecimalField(max_digits=20, decimal_places=4)
+    total_cost = models.DecimalField(max_digits=20, decimal_places=2)
+    total_qty_sold = models.DecimalField(max_digits=20, decimal_places=4)
+    total_revenue = models.DecimalField(max_digits=20, decimal_places=2)
+    profit = models.DecimalField(max_digits=20, decimal_places=2)
+    margin_percent = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = "product_financials_summary"

@@ -47,6 +47,12 @@ def test_rows_to_message_history_skips_thinking_placeholder():
 
 
 def test_chat_history_limit_is_five():
-    from ai.history import CHAT_HISTORY_LIMIT
+    from ai.constants import CHAT_HISTORY_LIMIT
 
     assert CHAT_HISTORY_LIMIT == 5
+
+
+def test_chat_sync_limit_is_hundred():
+    from ai.constants import CHAT_SYNC_LIMIT
+
+    assert CHAT_SYNC_LIMIT == 100

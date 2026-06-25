@@ -1,5 +1,6 @@
 # PowerSync service config — local dev. Matches inventory/docker-compose.yml
 # Sync Streams (edition 3). Migrated from legacy sync_rules bucket "inventory".
+# Chat stream LIMIT must match backend ai.constants.CHAT_SYNC_LIMIT (100).
 config:
   edition: 3
 
@@ -54,6 +55,7 @@ streams:
           user_id::text AS user_id,
           product_id::text AS product_id,
           quantity, total_cost,
+          product_sku, product_name,
           guid::text AS guid, created_at
         FROM purchase_order
         WHERE user_id::text = auth.user_id()
@@ -63,8 +65,19 @@ streams:
           user_id::text AS user_id,
           product_id::text AS product_id,
           quantity, unit_price,
+          product_sku, product_name,
           guid::text AS guid, created_at
         FROM sales_order
+        WHERE user_id::text = auth.user_id()
+      - |
+        SELECT product_id::text AS id,
+          product_id::text AS product_id,
+          user_id::text AS user_id,
+          sku, name, unit::text AS unit,
+          quantity_on_hand, total_qty_purchased, total_cost,
+          total_qty_sold, total_revenue, profit, margin_percent,
+          updated_at
+        FROM product_financials_summary
         WHERE user_id::text = auth.user_id()
       - |
         SELECT stock_movement_id::text AS id,
@@ -73,13 +86,21 @@ streams:
           product_id::text AS product_id,
           quantity_delta,
           unit_cost, source::text AS source,
+          product_sku,
           source_id::text AS source_id, created_at
         FROM stock_movement
         WHERE user_id::text = auth.user_id()
       - |
-        SELECT chat_message_id::text AS id,
-          chat_message_id::text AS chat_message_id,
-          user_id::text AS user_id,
-          role::text AS role, content, created_at
-        FROM chat_message
-        WHERE user_id::text = auth.user_id()
+        SELECT c.chat_message_id::text AS id,
+          c.chat_message_id::text AS chat_message_id,
+          c.user_id::text AS user_id,
+          c.role::text AS role, c.content, c.created_at
+        FROM chat_message c
+        INNER JOIN (
+          SELECT chat_message_id
+          FROM chat_message
+          WHERE user_id::text = auth.user_id()
+          ORDER BY chat_message_id DESC
+          LIMIT 100
+        ) recent ON recent.chat_message_id = c.chat_message_id
+        WHERE c.user_id::text = auth.user_id()

@@ -1,7 +1,7 @@
 /**
  * TanStack DB chat collection, optimistic sends, and live query hook.
  *
- * Flow: PowerSync service → local SQLite → collection (eager) → useChatMessages.
+ * Flow: PowerSync service → local SQLite (last CHAT_SYNC_LIMIT rows) → collection → useChatMessages.
  * Writes use optimistic collection.insert → PowerSync upload connector.
  */
 import type { PowerSyncDatabase } from '@powersync/web';
@@ -9,7 +9,7 @@ import { powerSyncCollectionOptions } from '@tanstack/powersync-db-collection';
 import { createCollection, useLiveQuery } from '@tanstack/react-db';
 
 import { syncLog } from './logger';
-import { PowerSyncManager } from './powersync-manager';
+import { PowerSyncManager } from './powersync';
 import { AppSchema } from './schema';
 
 /** Server-side placeholder inserted while the inventory agent runs. */

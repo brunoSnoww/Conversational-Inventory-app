@@ -3,7 +3,7 @@ import { Anchor } from '@mantine/core';
 
 import { routes } from '../routes';
 import {
-  useDashboard,
+  useDashboardRead,
   useProductBySku,
   usePurchaseOrders,
   useSalesOrders,
@@ -21,7 +21,7 @@ import {
 
 export function DashboardPage() {
   const { syncing, syncError } = useSyncing();
-  const dashboard = useDashboard();
+  const dashboard = useDashboardRead();
 
   return (
     <Page title="Dashboard">
@@ -42,7 +42,7 @@ export function DashboardPage() {
 
 export function ProductsPage() {
   const { syncing, syncError } = useSyncing();
-  const dashboard = useDashboard();
+  const dashboard = useDashboardRead();
 
   return (
     <Page title="Products">

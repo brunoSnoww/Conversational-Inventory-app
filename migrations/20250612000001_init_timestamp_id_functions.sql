@@ -48,40 +48,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
-CREATE FUNCTION extract_timestamp_from_id(id BIGINT)
-RETURNS TIMESTAMP WITH TIME ZONE AS $$
-DECLARE
-    timestamp_part BIGINT;
-BEGIN
-    IF id IS NULL OR id <= 0 THEN
-        RETURN NULL;
-    END IF;
-
-    timestamp_part := id >> 11;
-    RETURN to_timestamp(timestamp_part / 1000000.0);
-END;
-$$ LANGUAGE plpgsql IMMUTABLE STRICT;
-
-CREATE FUNCTION extract_sequence_from_id(id BIGINT, sequence_bits INT)
-RETURNS INT AS $$
-DECLARE
-    sequence_part INT;
-    random_bits INT;
-BEGIN
-    IF id IS NULL THEN
-        RETURN NULL;
-    END IF;
-
-    IF sequence_bits IS NULL OR sequence_bits < 0 OR sequence_bits > 11 THEN
-        RAISE EXCEPTION 'sequence_bits must be between 0 and 11, got %', sequence_bits;
-    END IF;
-
-    random_bits := 11 - sequence_bits;
-    sequence_part := (id >> random_bits) & ((1 << sequence_bits) - 1);
-    RETURN sequence_part;
-END;
-$$ LANGUAGE plpgsql IMMUTABLE STRICT;
-
 CREATE FUNCTION updated_at_trigger_function() RETURNS trigger
     LANGUAGE plpgsql AS
 $$BEGIN
@@ -93,8 +59,6 @@ END;$$;
 -- +goose Down
 -- +goose StatementBegin
 DROP FUNCTION IF EXISTS updated_at_trigger_function();
-DROP FUNCTION IF EXISTS extract_sequence_from_id(BIGINT, INT);
-DROP FUNCTION IF EXISTS extract_timestamp_from_id(BIGINT);
 DROP FUNCTION IF EXISTS gen_random_with_timestamp_id(TEXT, INT);
 DROP FUNCTION IF EXISTS generate_id_for_timestamp(TIMESTAMP WITH TIME ZONE);
 -- +goose StatementEnd

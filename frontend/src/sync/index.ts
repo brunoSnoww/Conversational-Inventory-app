@@ -6,8 +6,16 @@ export {
   useChatMessages,
   type ChatCollection,
 } from './chat';
-export { PowerSyncManager } from './powersync-manager';
-export { useSyncStatus } from './PowerSyncProvider';
+export {
+  InventoryPowerSyncProvider,
+  PowerSyncManager,
+  useSyncStatus,
+} from './powersync';
+export {
+  DashboardReadProvider,
+  useDashboardRead,
+  type DashboardRead,
+} from './dashboard-read';
 export {
   useDashboard,
   useProductBySku,

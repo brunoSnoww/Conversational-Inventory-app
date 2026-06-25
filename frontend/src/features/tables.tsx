@@ -93,7 +93,7 @@ export function PurchaseOrderTable({ rows }: { rows: PurchaseOrderRow[] }) {
     head: ['ID', 'SKU', 'Product', 'Qty', 'Total cost', 'Created'],
     body: rows.map((po) => [
       po.purchase_order_id,
-      po.sku,
+      po.product_sku,
       po.product_name,
       po.quantity,
       po.total_cost,
@@ -109,7 +109,7 @@ export function SalesOrderTable({ rows }: { rows: SalesOrderRow[] }) {
     head: ['ID', 'SKU', 'Product', 'Qty', 'Unit price', 'Created'],
     body: rows.map((so) => [
       so.sales_order_id,
-      so.sku,
+      so.product_sku,
       so.product_name,
       so.quantity,
       so.unit_price,
@@ -125,7 +125,7 @@ export function StockMovementTable({ rows }: { rows: StockMovementRow[] }) {
     head: ['ID', 'SKU', 'Delta', 'Unit cost', 'Source', 'Source ID', 'Created'],
     body: rows.map((sm) => [
       sm.stock_movement_id,
-      sm.sku,
+      sm.product_sku,
       sm.quantity_delta,
       sm.unit_cost ?? '—',
       sm.source,

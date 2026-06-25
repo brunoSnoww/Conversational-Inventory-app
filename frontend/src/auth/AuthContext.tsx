@@ -10,7 +10,7 @@ import {
 import { login as apiLogin, register as apiRegister } from '../api/auth';
 import type { AuthSession } from '../api/types';
 import { routes } from '../routes';
-import { PowerSyncManager } from '../sync/powersync-manager';
+import { PowerSyncManager } from '../sync/powersync';
 
 const STORAGE_KEY = 'inventory.auth';
 

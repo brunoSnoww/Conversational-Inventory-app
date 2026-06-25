@@ -16,6 +16,7 @@ import {
 } from '../features/inventory';
 import { Muted } from '../features/ui';
 import { routes } from '../routes';
+import { DashboardReadProvider } from '../sync';
 
 const LazyChatPage = lazy(() =>
   import('../features/chat').then((m) => ({ default: m.ChatPage })),
@@ -42,8 +43,10 @@ export function AppRouter() {
         <Route path={routes.login} element={<GuestRoute><LoginPage /></GuestRoute>} />
         <Route element={<AuthenticatedLayout />}>
           <Route element={<AppShellLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="products" element={<ProductsPage />} />
+            <Route element={<DashboardReadProvider />}>
+              <Route index element={<DashboardPage />} />
+              <Route path="products" element={<ProductsPage />} />
+            </Route>
             <Route path="products/:sku" element={<ProductDetailPage />} />
             <Route path="stock" element={<StockPage />} />
             <Route path="purchases" element={<PurchasesPage />} />

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-import { createPowerSyncFetch } from './powersync-fetch';
+import { createPowerSyncFetch } from './connector';
 
 const NGROK = 'https://canine-scrambled-reseller.ngrok-free.dev';
 
 vi.mock('../api/base-url', () => ({
-  getApiBaseUrl: () => NGROK,
+  getApiBaseUrl: () => 'https://canine-scrambled-reseller.ngrok-free.dev',
 }));
 
 describe('createPowerSyncFetch', () => {
