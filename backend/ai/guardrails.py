@@ -175,7 +175,6 @@ def _is_clarifying_question(output: str) -> bool:
 
 
 def _validate_write_uses_tool(ctx: RunContext, output: str) -> None:
-    """Octopus-style: write intents must call a write tool before any final reply."""
     user_text = _latest_user_prompt(ctx)
     if not user_text or not WRITE_INTENT.search(user_text):
         return

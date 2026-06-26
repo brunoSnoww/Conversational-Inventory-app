@@ -2,6 +2,9 @@
 -- +goose StatementBegin
 -- Octopus-style read model: trigger-maintained per-SKU financials synced to PowerSync clients.
 -- Replaces client-side JOIN/GROUP BY over stock_movement + purchase_order + sales_order.
+--
+-- Writes use O(1) incremental deltas per row change. refresh_product_financials_summary()
+-- remains for one-time backfill and repair only.
 
 CREATE TABLE product_financials_summary (
     product_id BIGINT PRIMARY KEY
@@ -25,6 +28,73 @@ CREATE TABLE product_financials_summary (
 
 CREATE INDEX product_financials_summary_user_sku_idx
     ON product_financials_summary (user_id, lower(sku));
+
+CREATE FUNCTION apply_product_financials_summary_delta(
+    p_product_id BIGINT,
+    p_qty_on_hand_delta NUMERIC(20, 4) DEFAULT 0,
+    p_qty_purchased_delta NUMERIC(20, 4) DEFAULT 0,
+    p_cost_delta NUMERIC(20, 2) DEFAULT 0,
+    p_qty_sold_delta NUMERIC(20, 4) DEFAULT 0,
+    p_revenue_delta NUMERIC(20, 2) DEFAULT 0
+) RETURNS void AS $$
+DECLARE
+    v_user_id BIGINT;
+    v_sku TEXT;
+    v_name TEXT;
+    v_unit product_unit;
+BEGIN
+    IF p_qty_on_hand_delta = 0
+        AND p_qty_purchased_delta = 0
+        AND p_cost_delta = 0
+        AND p_qty_sold_delta = 0
+        AND p_revenue_delta = 0
+    THEN
+        RETURN;
+    END IF;
+
+    SELECT user_id, sku, name, unit
+    INTO v_user_id, v_sku, v_name, v_unit
+    FROM product
+    WHERE product_id = p_product_id;
+
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO product_financials_summary (
+        product_id, user_id, sku, name, unit,
+        quantity_on_hand, total_qty_purchased, total_cost,
+        total_qty_sold, total_revenue, profit, margin_percent, updated_at
+    )
+    VALUES (
+        p_product_id, v_user_id, v_sku, v_name, v_unit,
+        0, 0, 0, 0, 0, 0, NULL, now()
+    )
+    ON CONFLICT (product_id) DO NOTHING;
+
+    UPDATE product_financials_summary
+    SET
+        quantity_on_hand = quantity_on_hand + p_qty_on_hand_delta,
+        total_qty_purchased = total_qty_purchased + p_qty_purchased_delta,
+        total_cost = total_cost + p_cost_delta,
+        total_qty_sold = total_qty_sold + p_qty_sold_delta,
+        total_revenue = total_revenue + p_revenue_delta,
+        profit = (total_revenue + p_revenue_delta) - (total_cost + p_cost_delta),
+        margin_percent = CASE
+            WHEN (total_cost + p_cost_delta) > 0 THEN
+                ROUND(
+                    (
+                        ((total_revenue + p_revenue_delta) - (total_cost + p_cost_delta))
+                        / (total_cost + p_cost_delta)
+                    ) * 100,
+                    2
+                )
+            ELSE NULL
+        END,
+        updated_at = now()
+    WHERE product_id = p_product_id;
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE FUNCTION refresh_product_financials_summary(p_product_id BIGINT) RETURNS void AS $$
 DECLARE
@@ -98,39 +168,172 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE FUNCTION trigger_refresh_product_financials_summary() RETURNS trigger AS $$
+CREATE FUNCTION product_financials_summary_from_product() RETURNS trigger AS $$
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        PERFORM refresh_product_financials_summary(OLD.product_id);
-        RETURN OLD;
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO product_financials_summary (
+            product_id, user_id, sku, name, unit,
+            quantity_on_hand, total_qty_purchased, total_cost,
+            total_qty_sold, total_revenue, profit, margin_percent, updated_at
+        )
+        VALUES (
+            NEW.product_id, NEW.user_id, NEW.sku, NEW.name, NEW.unit,
+            0, 0, 0, 0, 0, 0, NULL, now()
+        )
+        ON CONFLICT (product_id) DO NOTHING;
+        RETURN NEW;
     ELSIF TG_OP = 'UPDATE' THEN
-        IF OLD.product_id IS DISTINCT FROM NEW.product_id THEN
-            PERFORM refresh_product_financials_summary(OLD.product_id);
-        END IF;
-        PERFORM refresh_product_financials_summary(NEW.product_id);
+        UPDATE product_financials_summary
+        SET
+            user_id = NEW.user_id,
+            sku = NEW.sku,
+            name = NEW.name,
+            unit = NEW.unit,
+            updated_at = now()
+        WHERE product_id = NEW.product_id;
         RETURN NEW;
     END IF;
 
-    PERFORM refresh_product_financials_summary(NEW.product_id);
-    RETURN NEW;
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION product_financials_summary_from_purchase_order() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM apply_product_financials_summary_delta(
+            NEW.product_id,
+            p_qty_purchased_delta => NEW.quantity,
+            p_cost_delta => NEW.total_cost
+        );
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        PERFORM apply_product_financials_summary_delta(
+            OLD.product_id,
+            p_qty_purchased_delta => -OLD.quantity,
+            p_cost_delta => -OLD.total_cost
+        );
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.product_id IS DISTINCT FROM NEW.product_id THEN
+            PERFORM apply_product_financials_summary_delta(
+                OLD.product_id,
+                p_qty_purchased_delta => -OLD.quantity,
+                p_cost_delta => -OLD.total_cost
+            );
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_purchased_delta => NEW.quantity,
+                p_cost_delta => NEW.total_cost
+            );
+        ELSE
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_purchased_delta => NEW.quantity - OLD.quantity,
+                p_cost_delta => NEW.total_cost - OLD.total_cost
+            );
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION product_financials_summary_from_sales_order() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM apply_product_financials_summary_delta(
+            NEW.product_id,
+            p_qty_sold_delta => NEW.quantity,
+            p_revenue_delta => NEW.quantity * NEW.unit_price
+        );
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        PERFORM apply_product_financials_summary_delta(
+            OLD.product_id,
+            p_qty_sold_delta => -OLD.quantity,
+            p_revenue_delta => -(OLD.quantity * OLD.unit_price)
+        );
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.product_id IS DISTINCT FROM NEW.product_id THEN
+            PERFORM apply_product_financials_summary_delta(
+                OLD.product_id,
+                p_qty_sold_delta => -OLD.quantity,
+                p_revenue_delta => -(OLD.quantity * OLD.unit_price)
+            );
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_sold_delta => NEW.quantity,
+                p_revenue_delta => NEW.quantity * NEW.unit_price
+            );
+        ELSE
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_sold_delta => NEW.quantity - OLD.quantity,
+                p_revenue_delta => (NEW.quantity * NEW.unit_price) - (OLD.quantity * OLD.unit_price)
+            );
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION product_financials_summary_from_stock_movement() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM apply_product_financials_summary_delta(
+            NEW.product_id,
+            p_qty_on_hand_delta => NEW.quantity_delta
+        );
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        PERFORM apply_product_financials_summary_delta(
+            OLD.product_id,
+            p_qty_on_hand_delta => -OLD.quantity_delta
+        );
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.product_id IS DISTINCT FROM NEW.product_id THEN
+            PERFORM apply_product_financials_summary_delta(
+                OLD.product_id,
+                p_qty_on_hand_delta => -OLD.quantity_delta
+            );
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_on_hand_delta => NEW.quantity_delta
+            );
+        ELSE
+            PERFORM apply_product_financials_summary_delta(
+                NEW.product_id,
+                p_qty_on_hand_delta => NEW.quantity_delta - OLD.quantity_delta
+            );
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER product_financials_summary_product_trigger
-    AFTER INSERT OR UPDATE OR DELETE ON product
-    FOR EACH ROW EXECUTE PROCEDURE trigger_refresh_product_financials_summary();
+    AFTER INSERT OR UPDATE ON product
+    FOR EACH ROW EXECUTE FUNCTION product_financials_summary_from_product();
 
 CREATE TRIGGER product_financials_summary_purchase_order_trigger
     AFTER INSERT OR UPDATE OR DELETE ON purchase_order
-    FOR EACH ROW EXECUTE PROCEDURE trigger_refresh_product_financials_summary();
+    FOR EACH ROW EXECUTE FUNCTION product_financials_summary_from_purchase_order();
 
 CREATE TRIGGER product_financials_summary_sales_order_trigger
     AFTER INSERT OR UPDATE OR DELETE ON sales_order
-    FOR EACH ROW EXECUTE PROCEDURE trigger_refresh_product_financials_summary();
+    FOR EACH ROW EXECUTE FUNCTION product_financials_summary_from_sales_order();
 
 CREATE TRIGGER product_financials_summary_stock_movement_trigger
     AFTER INSERT OR UPDATE OR DELETE ON stock_movement
-    FOR EACH ROW EXECUTE PROCEDURE trigger_refresh_product_financials_summary();
+    FOR EACH ROW EXECUTE FUNCTION product_financials_summary_from_stock_movement();
 
 -- Backfill all existing products (seed + demo data run before this migration).
 SELECT refresh_product_financials_summary(product_id) FROM product;
@@ -193,7 +396,13 @@ DROP TRIGGER IF EXISTS product_financials_summary_sales_order_trigger ON sales_o
 DROP TRIGGER IF EXISTS product_financials_summary_purchase_order_trigger ON purchase_order;
 DROP TRIGGER IF EXISTS product_financials_summary_product_trigger ON product;
 
-DROP FUNCTION IF EXISTS trigger_refresh_product_financials_summary();
+DROP FUNCTION IF EXISTS product_financials_summary_from_stock_movement();
+DROP FUNCTION IF EXISTS product_financials_summary_from_sales_order();
+DROP FUNCTION IF EXISTS product_financials_summary_from_purchase_order();
+DROP FUNCTION IF EXISTS product_financials_summary_from_product();
+DROP FUNCTION IF EXISTS apply_product_financials_summary_delta(
+    BIGINT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC
+);
 DROP FUNCTION IF EXISTS refresh_product_financials_summary(BIGINT);
 
 DROP TABLE IF EXISTS product_financials_summary;
