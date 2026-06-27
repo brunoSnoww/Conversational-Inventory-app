@@ -72,14 +72,13 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_SECRET_KEY: dev-docker-secret
-      DJANGO_DEBUG: "true"
+      APP_SECRET_KEY: dev-docker-secret
+      DEBUG: "true"
       INVENTORY_DB_HOST: postgres
       INVENTORY_DB_PORT: "5432"
       INVENTORY_DB_NAME: db_inventory
       INVENTORY_DB_USER: postgres
       INVENTORY_DB_PASSWORD: postgres
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       POWERSYNC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:2000}
       POWERSYNC_JWT_SECRET: inventory-dev-powersync-secret-key-32b
       POWERSYNC_JWT_AUDIENCE: ${POWERSYNC_PUBLIC_URL:-http://localhost:2000}
@@ -89,7 +88,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 volumes:
   inventory_pgdata:

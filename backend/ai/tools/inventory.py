@@ -9,7 +9,7 @@ from typing import Literal
 from asgiref.sync import sync_to_async
 from pydantic_ai import ModelRetry, RunContext
 
-from inventory_api.constants import ProductUnit
+from app.constants import ProductUnit
 from services import inventory as svc
 
 from ..deps import Deps

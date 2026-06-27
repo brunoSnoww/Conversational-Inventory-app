@@ -15,7 +15,7 @@ class UnknownProduct(InventoryError):
 
 class InvalidUnit(InventoryError):
     def __init__(self, unit: str) -> None:
-        from inventory_api.constants import product_units_label
+        from app.constants import product_units_label
 
         self.unit = unit
         super().__init__(f"Invalid unit '{unit}'. Must be one of: {product_units_label()}.")

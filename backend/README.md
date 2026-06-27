@@ -1,6 +1,6 @@
-# Inventory Django API
+# Inventory FastAPI
 
-DRF server on Goose-managed Postgres. Schema lives in `../migrations/` — **do not** `migrate` new tables via Django.
+FastAPI server on Goose-managed Postgres. Schema lives in `../migrations/` — **do not** manage schema from the app.
 
 ## Setup
 
@@ -12,9 +12,8 @@ docker compose up -d
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export DJANGO_SECRET_KEY=dev-secret
-python manage.py check
-python manage.py runserver 8000
+export APP_SECRET_KEY=dev-secret
+uvicorn app.main:app --reload --port 8000
 ```
 
 Demo user: `demo@inventory.local` / `password123` (seed migration and `./scripts/reset-db.sh`)
@@ -47,14 +46,13 @@ Use `Authorization: Bearer <access>` on protected routes.
 | POST | `/api/sync/token/` | mint PowerSync JWT |
 | POST | `/api/sync/mutations/` | PowerSync upload connector (chat + agent) |
 | GET | `/api/sync/jwks/` | HS256 JWKS (local dev) |
-| GET | `/api/docs/` | Swagger UI |
-| GET | `/api/schema/` | OpenAPI schema |
+| GET | `/docs` | OpenAPI Swagger UI |
 
-Chat is **not** a REST endpoint — user messages upload via PowerSync; `sync_api/mutations.py` runs the agent and writes the assistant reply.
+Chat is **not** a REST endpoint — user messages upload via PowerSync; `app/sync/mutations.py` runs the agent and writes the assistant reply.
 
 ## PowerSync env
 
-Configured in `sync_api/jwt.py` (must match `../powersync/config.yaml` `client_auth.jwks`):
+Configured in `app/sync/jwt.py` (must match `../powersync/config.yaml` `client_auth.jwks`):
 
 | Var | Default |
 |-----|---------|
@@ -66,6 +64,7 @@ Configured in `sync_api/jwt.py` (must match `../powersync/config.yaml` `client_a
 
 | Var | Default |
 |-----|---------|
+| `APP_SECRET_KEY` | dev-only (JWT signing) |
 | `INVENTORY_DB_HOST` | `localhost` |
 | `INVENTORY_DB_PORT` | `5433` |
 | `INVENTORY_DB_NAME` | `db_inventory` |
@@ -75,22 +74,21 @@ Configured in `sync_api/jwt.py` (must match `../powersync/config.yaml` `client_a
 | `OPENAI_API_KEY` | optional — OpenAI fallback |
 | `INVENTORY_AGENT_MODEL` | override pydantic-ai model id |
 
-Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL` → OpenRouter GPT-4o → Gemini → DeepSeek → `openai:gpt-4o`.
+Default model resolution (`app/config.py`): explicit `INVENTORY_AGENT_MODEL` → OpenRouter GPT-4o → Gemini → DeepSeek → `openai:gpt-4o`.
 
 ## Service layout
 
 | Module | Role |
 |--------|------|
-| `domain/models.py` | Rich domain entities (Product, StockMovement, orders) with validation rules |
+| `app/` | FastAPI routers, auth, sync, psycopg pool |
+| `domain/models.py` | Rich domain entities with validation rules |
 | `domain/exceptions.py` | Domain errors (`UnknownProduct`, `InsufficientStock`, …) |
-| `services/repositories/` | SQL/ORM persistence — returns domain models |
-| `services/services/` | Business orchestration, `@transaction.atomic`, DI |
+| `services/repositories/` | SQL persistence — returns domain models |
+| `services/services/` | Business orchestration, `@atomic` transactions, DI |
 | `services/dtos/` | Typed service response objects |
-| `services/inventory.py` | Backward-compatible `*_sync` facade for views and AI tools |
+| `services/inventory.py` | Backward-compatible `*_sync` facade for HTTP and AI tools |
 | `services/container.py` | Wires repositories → services |
 | `services/db.py` | Postgres helpers (`fetch_one`, `fetch_all`) |
-| `inventory_api/` | DRF viewsets, serializers, unmanaged ORM models (read views) |
-| `sync_api/` | PowerSync JWT, upload connector |
 | `ai/` | pydantic-ai agent, guardrails, tools |
 
 Order edits **never delete or mutate** ledger rows — they append compensating `stock_movement` lines.

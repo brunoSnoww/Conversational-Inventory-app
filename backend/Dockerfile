@@ -15,9 +15,7 @@ EXPOSE 8000
 
 # Prod default — docker-compose.yml overrides with runserver for local dev.
 CMD [
-  "gunicorn", "config.wsgi:application",
-  "-b", "0.0.0.0:8000",
-  "--workers", "2",
-  "--threads", "4",
-  "--timeout", "120",
+  "uvicorn", "app.main:app",
+  "--host", "0.0.0.0",
+  "--port", "8000",
 ]

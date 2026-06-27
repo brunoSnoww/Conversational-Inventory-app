@@ -112,19 +112,40 @@ class ProductRepository:
         row = self._db.fetch_one(_DELETE, [user_id, product_id])
         return row is not None
 
-    def list_by_user(self, user_id: int) -> list[Product]:
-        from inventory_api.models import Product as ProductModel
+    def list_rows_by_user(self, user_id: int) -> list[dict[str, Any]]:
+        return self._db.fetch_all(
+            """
+            SELECT product_id, user_id, name, description, sku, unit::text AS unit,
+                   created_at, updated_at
+            FROM product
+            WHERE user_id = %s
+            ORDER BY product_id DESC
+            """,
+            [user_id],
+        )
 
+    def get_row_by_id(self, user_id: int, product_id: int) -> dict[str, Any] | None:
+        return self._db.fetch_one(
+            """
+            SELECT product_id, user_id, name, description, sku, unit::text AS unit,
+                   created_at, updated_at
+            FROM product
+            WHERE user_id = %s AND product_id = %s
+            """,
+            [user_id, product_id],
+        )
+
+    def list_by_user(self, user_id: int) -> list[Product]:
         return [
             Product(
-                id=int(p.product_id),
-                user_id=int(p.user_id),
-                sku=p.sku,
-                name=p.name,
-                unit=p.unit,
-                description=p.description or "",
-                created_at=p.created_at,
-                updated_at=p.updated_at,
+                id=int(row["product_id"]),
+                user_id=int(row["user_id"]),
+                sku=row["sku"],
+                name=row["name"],
+                unit=row["unit"],
+                description=row.get("description") or "",
+                created_at=row.get("created_at"),
+                updated_at=row.get("updated_at"),
             )
-            for p in ProductModel.objects.filter(user_id=user_id).order_by("sku")
+            for row in self.list_rows_by_user(user_id)
         ]

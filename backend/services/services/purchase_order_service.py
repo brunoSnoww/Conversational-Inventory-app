@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from django.db import transaction
+from services.txn import atomic
 
 from domain.models import PurchaseOrder
 from services.dtos.results import PurchaseOrderResult
@@ -30,7 +30,7 @@ class PurchaseOrderService:
             raise OrderNotFound("Purchase order", purchase_order_id)
         return order
 
-    @transaction.atomic
+    @atomic
     def create(
         self,
         user_id: int,
@@ -70,7 +70,7 @@ class PurchaseOrderService:
         )
         return self._to_result(saved, product.sku, product_id)
 
-    @transaction.atomic
+    @atomic
     def update(
         self,
         user_id: int,
@@ -112,7 +112,7 @@ class PurchaseOrderService:
         assert saved is not None
         return self._to_result(saved, po.sku, product_id)
 
-    @transaction.atomic
+    @atomic
     def delete(self, user_id: int, purchase_order_id: int) -> None:
         po = self._get_order(user_id, purchase_order_id)
         assert po.sku is not None and po.id is not None

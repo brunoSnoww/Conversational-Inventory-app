@@ -102,3 +102,24 @@ class PurchaseOrderRepository:
     def delete(self, user_id: int, purchase_order_id: int) -> bool:
         row = self._db.fetch_one(_DELETE, [user_id, purchase_order_id])
         return row is not None
+
+    def list_by_user(self, user_id: int) -> list[dict[str, Any]]:
+        return self._db.fetch_all(
+            """
+            SELECT purchase_order_id, user_id, product_id, quantity, total_cost, guid, created_at
+            FROM purchase_order
+            WHERE user_id = %s
+            ORDER BY purchase_order_id DESC
+            """,
+            [user_id],
+        )
+
+    def get_row_by_id(self, user_id: int, purchase_order_id: int) -> dict[str, Any] | None:
+        return self._db.fetch_one(
+            """
+            SELECT purchase_order_id, user_id, product_id, quantity, total_cost, guid, created_at
+            FROM purchase_order
+            WHERE user_id = %s AND purchase_order_id = %s
+            """,
+            [user_id, purchase_order_id],
+        )

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.conf import settings
-from pydantic_ai import Agent, RunContext
+from app.config import get_settings
+from app.constants import product_units_label
 
-from inventory_api.constants import product_units_label
+from pydantic_ai import Agent, RunContext
 
 from .deps import Deps
 from .guardrails import output_guardrails_handler
@@ -23,7 +23,7 @@ from .tools.inventory import (
 
 
 inventory_agent: Agent[Deps, str] = Agent(
-    settings.INVENTORY_AGENT_MODEL,
+    get_settings().resolved_agent_model,
     name="inventory_agent",
     deps_type=Deps,
     tools=[calculator, register_product, query_stock, add_stock, create_purchase_order, record_sale, get_profit],

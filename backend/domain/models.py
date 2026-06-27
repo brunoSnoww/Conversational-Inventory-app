@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
-from inventory_api.constants import VALID_PRODUCT_UNITS
+from app.constants import VALID_PRODUCT_UNITS
 
 from .exceptions import InsufficientStock, InvalidUnit, InventoryError
 

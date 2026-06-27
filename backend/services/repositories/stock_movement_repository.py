@@ -89,12 +89,23 @@ class StockMovementRepository:
         return int(row["cnt"])
 
     def stock_for(self, user_id: int, product_id: int) -> Decimal:
-        from inventory_api.models import ProductStockView
+        row = self._db.fetch_one(
+            """
+            SELECT quantity_on_hand
+            FROM product_stock_view
+            WHERE user_id = %s AND product_id = %s
+            """,
+            [user_id, product_id],
+        )
+        return Decimal("0") if row is None else row["quantity_on_hand"]
 
-        row = ProductStockView.objects.filter(user_id=user_id, product_id=product_id).first()
-        return Decimal("0") if row is None else row.quantity_on_hand
-
-    def list_stock_levels(self, user_id: int):
-        from inventory_api.models import ProductStockView
-
-        return ProductStockView.objects.filter(user_id=user_id).order_by("sku")
+    def list_stock_levels(self, user_id: int) -> list[dict[str, Any]]:
+        return self._db.fetch_all(
+            """
+            SELECT product_id, sku, name, unit::text AS unit, quantity_on_hand
+            FROM product_stock_view
+            WHERE user_id = %s
+            ORDER BY sku
+            """,
+            [user_id],
+        )

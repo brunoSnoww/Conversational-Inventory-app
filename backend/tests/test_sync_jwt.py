@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import jwt
 
-from sync_api.jwt import POWERSYNC_JWT_AUDIENCE, POWERSYNC_JWT_SECRET, mint_powersync_token, powersync_jwks_k
+from app.config import get_settings
+from app.sync.jwt import mint_powersync_token, powersync_jwks_k
 
 
 def test_mint_powersync_token_sub_claim():
+    settings = get_settings()
     token = mint_powersync_token(42)
-    payload = jwt.decode(token, POWERSYNC_JWT_SECRET, algorithms=["HS256"], audience=POWERSYNC_JWT_AUDIENCE)
+    payload = jwt.decode(
+        token,
+        settings.powersync_jwt_secret,
+        algorithms=["HS256"],
+        audience=settings.powersync_jwt_audience,
+    )
     assert payload["sub"] == "42"
 
 

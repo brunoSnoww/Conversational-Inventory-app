@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db import transaction
+from services.txn import atomic
 
 from domain.models import Product
 from services.dtos.results import ProductResult
@@ -46,7 +46,7 @@ class ProductService:
         assert updated is not None
         return self._to_result(updated)
 
-    @transaction.atomic
+    @atomic
     def delete(self, user_id: int, product_id: int) -> None:
         existing = self._products.get_by_id(user_id, product_id)
         if existing is None:

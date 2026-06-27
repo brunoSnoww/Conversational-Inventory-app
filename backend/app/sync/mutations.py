@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any
-
-from asgiref.sync import sync_to_async
 
 from ai.constants import THINKING_PLACEHOLDER
 from services.db import fetch_one
@@ -44,7 +43,8 @@ async def _dispatch_one(user_id: int, mutation: Mutation) -> None:
 
 async def _insert_user_message(user_id: int, content: str, client_id: int | None) -> int:
     if client_id is not None:
-        row = await sync_to_async(fetch_one)(
+        row = await asyncio.to_thread(
+            fetch_one,
             """
             INSERT INTO chat_message (chat_message_id, user_id, role, content)
             VALUES (%s, %s, 'user'::chat_message_role, %s)
@@ -55,7 +55,8 @@ async def _insert_user_message(user_id: int, content: str, client_id: int | None
         )
         if row is not None:
             return int(row["chat_message_id"])
-        existing = await sync_to_async(fetch_one)(
+        existing = await asyncio.to_thread(
+            fetch_one,
             """
             SELECT chat_message_id FROM chat_message
             WHERE chat_message_id = %s AND user_id = %s
@@ -66,7 +67,8 @@ async def _insert_user_message(user_id: int, content: str, client_id: int | None
             raise PermissionError("chat_message_id belongs to another user or is missing")
         return int(existing["chat_message_id"])
 
-    row = await sync_to_async(fetch_one)(
+    row = await asyncio.to_thread(
+        fetch_one,
         """
         INSERT INTO chat_message (user_id, role, content)
         VALUES (%s, 'user'::chat_message_role, %s)
@@ -94,7 +96,8 @@ def _update_assistant_message(user_id: int, chat_message_id: int, content: str) 
 
 
 async def _insert_thinking_placeholder(user_id: int) -> int:
-    row = await sync_to_async(fetch_one)(
+    row = await asyncio.to_thread(
+        fetch_one,
         """
         INSERT INTO chat_message (user_id, role, content)
         VALUES (%s, 'assistant'::chat_message_role, %s)
@@ -107,8 +110,8 @@ async def _insert_thinking_placeholder(user_id: int) -> int:
 
 
 async def _resolve_pending_reply(user_id: int, user_message_id: int) -> _PendingReply | None:
-    """Return a placeholder to fill, or None when a final assistant reply already exists."""
-    row = await sync_to_async(fetch_one)(
+    row = await asyncio.to_thread(
+        fetch_one,
         """
         SELECT chat_message_id, content
         FROM chat_message
@@ -150,24 +153,33 @@ async def _complete_chat_reply(
 
     try:
         reply = await run_inventory_agent(
-            user_id, content, chat_message_id=user_message_id,
+            user_id,
+            content,
+            chat_message_id=user_message_id,
         )
     except Exception:
         logger.exception(
             "agent failed user_id=%s user_message_id=%s placeholder_id=%s",
-            user_id, user_message_id, placeholder_id,
+            user_id,
+            user_message_id,
+            placeholder_id,
         )
         reply = FALLBACK_REPLY
 
-    updated = await sync_to_async(_update_assistant_message)(
-        user_id, placeholder_id, reply,
+    updated = await asyncio.to_thread(
+        _update_assistant_message,
+        user_id,
+        placeholder_id,
+        reply,
     )
     if not updated:
         logger.warning(
             "thinking placeholder missing user_id=%s placeholder_id=%s — inserting reply",
-            user_id, placeholder_id,
+            user_id,
+            placeholder_id,
         )
-        await sync_to_async(fetch_one)(
+        await asyncio.to_thread(
+            fetch_one,
             """
             INSERT INTO chat_message (user_id, role, content)
             VALUES (%s, 'assistant'::chat_message_role, %s)
@@ -192,22 +204,15 @@ async def _handle_chat_message(user_id: int, data: dict[str, Any]) -> None:
 
     client_id = data.get("chat_message_id")
     chat_message_id = await _insert_user_message(
-        user_id, content, int(client_id) if client_id is not None else None,
+        user_id,
+        content,
+        int(client_id) if client_id is not None else None,
     )
 
     pending = await _resolve_pending_reply(user_id, chat_message_id)
     if pending is None:
         return
 
-    from ai.runner import schedule_coro
-
-    schedule_coro(
+    asyncio.create_task(
         _complete_chat_reply(user_id, chat_message_id, content, pending.placeholder_id),
     )
-
-
-def dispatch_mutations_sync(user_id: int, mutations: list[Mutation]) -> None:
-    """WSGI-safe entry point — run on persistent agent loop."""
-    from ai.runner import run_coro_blocking
-
-    run_coro_blocking(dispatch_mutations(user_id, mutations))

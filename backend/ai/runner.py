@@ -4,46 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
-from typing import Any, Coroutine, TypeVar
 
-from asgiref.sync import sync_to_async
-
-from .deps import Deps
 from .agent import inventory_agent
+from .deps import Deps
 from .guardrails import FALLBACK_REPLY, InputGuardrailError, check_input
 from .history import load_chat_history
 
 log = logging.getLogger(__name__)
-T = TypeVar("T")
-
-# ponytail: one persistent loop — pydantic-ai binds httpx client to first loop used.
-_loop: asyncio.AbstractEventLoop | None = None
-_loop_lock = threading.Lock()
-
-
-def _get_loop() -> asyncio.AbstractEventLoop:
-    global _loop
-    if _loop is not None and not _loop.is_closed():
-        return _loop
-    with _loop_lock:
-        if _loop is None or _loop.is_closed():
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(target=loop.run_forever, name="agent-loop", daemon=True)
-            thread.start()
-            _loop = loop
-    return _loop
-
-
-def run_coro_blocking(coro: Coroutine[Any, Any, T]) -> T:
-    """Run an async coroutine on the persistent agent loop (blocks caller thread)."""
-    return asyncio.run_coroutine_threadsafe(coro, _get_loop()).result()
-
-
-def schedule_coro(coro: Coroutine[Any, Any, T]) -> asyncio.Future[T]:
-    """Schedule on the agent loop without blocking the caller (WSGI thread)."""
-    return asyncio.run_coroutine_threadsafe(coro, _get_loop())
-
 
 try:
     from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
@@ -80,8 +47,10 @@ async def run_inventory_agent(
     except InputGuardrailError as e:
         return str(e)
     try:
-        history = await sync_to_async(load_chat_history)(
-            user_id, exclude_message_id=chat_message_id,
+        history = await asyncio.to_thread(
+            load_chat_history,
+            user_id,
+            exclude_message_id=chat_message_id,
         )
         result = await inventory_agent.run(
             clean,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db import transaction
+from services.txn import atomic
 
 from domain.models import StockMovement
 from services.dtos.results import StockQueryResult, StockResult
@@ -72,7 +72,7 @@ class StockService:
     def get_movement(self, user_id: int, stock_movement_id: int) -> dict:
         return self._get_movement_model(user_id, stock_movement_id).to_api_dict()
 
-    @transaction.atomic
+    @atomic
     def create_manual_movement(
         self, user_id: int, *, sku: str, quantity: Decimal, unit_cost: Decimal | None = None
     ) -> dict:
@@ -92,7 +92,7 @@ class StockService:
         movement.sku = product.sku
         return movement.to_api_dict()
 
-    @transaction.atomic
+    @atomic
     def update_manual_movement(
         self,
         user_id: int,
@@ -134,7 +134,7 @@ class StockService:
             return movement.to_api_dict()
         return existing.to_api_dict()
 
-    @transaction.atomic
+    @atomic
     def delete_manual_movement(self, user_id: int, stock_movement_id: int) -> None:
         existing = self._get_movement_model(user_id, stock_movement_id)
         later = self._stock.count_later_than(user_id, existing.product_id, stock_movement_id)
