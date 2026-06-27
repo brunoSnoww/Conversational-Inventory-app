@@ -92,7 +92,7 @@ Open **http://localhost:5173**
 | Field | Value |
 |-------|-------|
 | Email | `demo@inventory.local` |
-| Password | `KaizntreeDemo1!` |
+| Password | `password123` |
 
 ### Ports
 
@@ -121,12 +121,6 @@ Wipes the DB volume, re-runs migrations, restarts the stack. Log out and back in
 | Chat returns API key error | Fix `OPENROUTER_API_KEY` in `.env`, then `docker compose up -d api` |
 | Dashboard empty after login | Log out → log in (clears stale PowerSync SQLite) |
 | Migrations fail | Ensure Postgres is healthy: `docker compose ps` |
-
-### Deploying (Vercel + ngrok)
-
-The demo frontend was deployed with a **static frontend on Vercel** and **backend at home** exposed
-through ngrok (`./scripts/ngrok-all.sh`). That split is convenient for a portfolio demo, also because Powersync deploy is more complex.
-
 
 ## Architecture
 
