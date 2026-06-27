@@ -307,7 +307,7 @@ toward production-grade AI orchestration (Temporal, skills, expanded guardrails)
 
 ---
 
-## PowerSync + AI = s2
+## PowerSync + AI
 
 The hard part of an AI that mutates data is keeping the UI honest. The agent might create
 a PO, record a sale, *and* register a product in one turn. How to update the dashboard?
@@ -341,93 +341,6 @@ told — the reactive read layer observes the data, not the operation. Same prop
 **offline** (writes queue, sync on reconnect) and **multi-tab / multi-device** (every
 client converges on the same replica). This is why `useInventory.ts` mutations have no
 `onSuccess: invalidate` — and the comment there says exactly that.
-
----
-
-## Improvements (roadmap to production scale)
-
-This demo follows a **production-shaped architecture** at portfolio scope: Postgres as
-truth, PowerSync for offline-first reads, tools that own mutations, guardrails that block
-hallucinated figures, and **server-maintained read models** synced as flat rows. The
-tables below map what exists today, what a full-scale mobile + banking stack would add,
-and the sequenced work to close the gap without a big-bang rewrite.
-
-Deep dives: [AI layer comparison](docs/inventory_vs_octopus_ai.md) · [PowerSync read patterns](docs/powersync_reads_and_octopus_patterns.md) · [architecture target doc](docs/ARCHITECTURE_CURRENT_AND_TARGET.md)
-
-### North star (patterns we are converging on)
-
-| Pattern | Production ideal | Inventory today |
-|---------|------------------|-----------------|
-| Display reads | Local SQLite via PowerSync — **no REST refetch on navigation** | ✅ Same |
-| Write path | Service layer + durable workflows at scale | ✅ FastAPI `services/` + REST; chat via sync mutations |
-| Read models | Trigger-maintained summary tables + denormalized sync columns | ✅ `product_financials_summary` + denorm labels |
-| Sync queries | Flat `SELECT … WHERE` per table; no JOIN in stream config | ✅ Mostly; see pagination/window gaps below |
-| Volume control | Session-scoped chat, time partitions, cursor pagination | ⏳ Partial — chat capped at 100 rows |
-| AI | pydantic-ai + tools + guardrails; durable workflow for chat turns | ✅ Same philosophy; in-process agent, no Temporal yet |
-
-Navigation and cache invalidation are **already correct** — a production app would not
-change that story. The remaining work is **what gets synced**, **how much history the
-client holds**, and **how durable/scalable the agent runtime is**.
-
-### Read path & PowerSync — sequenced priority
-
-Work in this order. Each step is independently shippable.
-
-| Priority | Item | Status | What it does | Production precedent |
-|----------|------|--------|--------------|----------------------|
-| **1** | Server summary + denorm tables | ✅ Done | `product_financials_summary` (triggers on ledger/orders); `product_sku`/`product_name` on PO/SO/movements | Daily balance rollups, merchant aggregates, payment-row denorm |
-| **2** | Hoist `useDashboard` | ✅ Done | `DashboardReadProvider` — one subscription for `/` + `/products` | Single layout-level DB subscription in app shell |
-| **3** | Chat sync cap (50–100 rows) | ✅ Done | Stream syncs last **100** rows (`CHAT_SYNC_LIMIT`); agent still loads **5** turns for LLM context | Session/window bounds on messaging sync |
-| **4** | PO/SO/movement **local** LIMIT + load-more | ⏳ Next | `ORDER BY … DESC LIMIT 50` in hooks; "Load more" from local SQLite cursor | Cursor pagination on local reads (`WHERE id > ? LIMIT N`) |
-| **5** | **90-day sync window** on orders/movements | ⏳ Planned | Cap replication in `powersync/config.yaml` (`WHERE created_at >= now() - interval '90 days'`) | Time-bounded payment/order partitions |
-| **6** | Session-scoped chat + yearly partitions | ⏳ If product grows | JWT `chat_session_id` bucket; yearly partition wildcards on `chat_message` | Session-scoped messaging buckets, `*_20%` partition streams |
-
-**Why this order:** (1–3) remove the worst client/sync cost at demo scale. (4) bounds UI work without changing replication. (5) bounds device storage and initial sync. (6) only matters beyond a single-thread chat demo or years of order history.
-
-**Dual-bucket rule:** keep syncing **base tables** for writes and audit, plus **summary/rollup tables** for dashboards. Do not drop raw `purchase_order` / `stock_movement` rows until a rollup bucket replaces a screen entirely.
-
-### AI architecture — sequenced toward production agent platform
-
-Inventory AI is a **minimal solo agent**: pydantic-ai loop, tools call the real write path,
-figure guardrails, calculator for arithmetic. A production banking agent adds durable
-workflows, skills, and richer guardrails.
-
-| Priority | Item | Status | Production target | Notes |
-|----------|------|--------|-------------------|-------|
-| **A** | Tools → `services/inventory.py` facade | ✅ Done | Tools → durable workflow → service API | Single write path for REST + chat |
-| **B** | Figure + write-intent guardrails | ✅ Done | Multi-category output guardrails | Current guardrails cover SKU/profit domain |
-| **C** | Async agent after upload | ✅ Done | Durable chat-turn workflow | `asyncio.create_task` — HTTP returns fast; agent in-process |
-| **D** | Tool idempotency (`tool_guid`) | ✅ Partial | Workflow idempotency keys | PO/SO done; extend to `add_stock`, `register_product` |
-| **E** | Durable chat turn job | ⏳ Planned | Temporal worker + activity | Celery/RQ acceptable in monolith; Temporal if multi-service |
-| **F** | Skills + nested toolsets | ⏳ Planned | Skill-aware, feature-controlled toolsets | When tool count / prompt token cost grows |
-| **G** | Expanded guardrails | ⏳ Planned | Task hallucination, tag validation, URL allowlists | Split `guardrails.py` → package |
-| **H** | Structured output (rich blocks) | ❌ Defer | Protobuf + channel adapters | Markdown chat is fine until rich messaging UI |
-| **I** | Dynamic model routing | ❌ Defer | Feature-flag model racing | Single `INVENTORY_AGENT_MODEL` is enough for demo |
-
-**Agent history alignment:** server loads **5** non-placeholder turns (`CHAT_HISTORY_LIMIT`); client syncs **100** rows (`CHAT_SYNC_LIMIT`) for UI scrollback. Production would add session-scoped sync buckets before unbounded chat history.
-
-**Interview one-liner:**
-
-> pydantic-ai agent — tools call the real write path, guardrails enforce fresh data before numbers, UI reacts to Postgres via PowerSync — without Temporal, skills, or structured message blocks.
-
-### What we explicitly defer (still valid for a portfolio demo)
-
-- Multi-service split (AI worker vs FastAPI API)
-- PowerSync Cloud / RS256 JWT production hardening
-- WhatsApp / rich channel message formatting
-- Multi-agent intent routing (inventory uses one solo agent)
-- Yearly table partitions until order volume warrants it
-
-### Related docs
-
-| Doc | Contents |
-|-----|----------|
-| [docs/inventory_vs_octopus_ai.md](docs/inventory_vs_octopus_ai.md) | Side-by-side AI layer comparison |
-| [docs/powersync_reads_and_octopus_patterns.md](docs/powersync_reads_and_octopus_patterns.md) | Read models, navigation, sync patterns at scale |
-| [docs/ARCHITECTURE_CURRENT_AND_TARGET.md](docs/ARCHITECTURE_CURRENT_AND_TARGET.md) | Phased target architecture |
-| [docs/inventory_exam.md](docs/inventory_exam.md) | Q14–Q15 on trigger denorm + summary tables |
-
----
 
 ## Tests
 
