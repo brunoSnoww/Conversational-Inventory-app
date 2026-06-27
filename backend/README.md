@@ -17,14 +17,14 @@ python manage.py check
 python manage.py runserver 8000
 ```
 
-Demo user: `demo@inventory.local` / `KaizntreeDemo1!` (set by `./scripts/reset-db.sh`; seed migration uses `password123` until reset)
+Demo user: `demo@inventory.local` / `password123` (seed migration and `./scripts/reset-db.sh`)
 
 ## Auth
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/login/ \
   -H 'Content-Type: application/json' \
-  -d '{"email":"demo@inventory.local","password":"KaizntreeDemo1!"}'
+  -d '{"email":"demo@inventory.local","password":"password123"}'
 ```
 
 Use `Authorization: Bearer <access>` on protected routes.
@@ -47,7 +47,6 @@ Use `Authorization: Bearer <access>` on protected routes.
 | POST | `/api/sync/token/` | mint PowerSync JWT |
 | POST | `/api/sync/mutations/` | PowerSync upload connector (chat + agent) |
 | GET | `/api/sync/jwks/` | HS256 JWKS (local dev) |
-| GET | `/api/sync/write-checkpoint/` | proxy PowerSync write checkpoint (ngrok/CORS) |
 | GET | `/api/docs/` | Swagger UI |
 | GET | `/api/schema/` | OpenAPI schema |
 
@@ -91,7 +90,7 @@ Default model resolution (`config/settings.py`): explicit `INVENTORY_AGENT_MODEL
 | `services/container.py` | Wires repositories → services |
 | `services/db.py` | Postgres helpers (`fetch_one`, `fetch_all`) |
 | `inventory_api/` | DRF viewsets, serializers, unmanaged ORM models (read views) |
-| `sync_api/` | PowerSync JWT, upload connector, write-checkpoint proxy |
+| `sync_api/` | PowerSync JWT, upload connector |
 | `ai/` | pydantic-ai agent, guardrails, tools |
 
 Order edits **never delete or mutate** ledger rows — they append compensating `stock_movement` lines.

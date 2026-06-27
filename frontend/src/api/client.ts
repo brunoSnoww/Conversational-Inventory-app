@@ -1,4 +1,3 @@
-import { ngrokSkipHeaders } from '../lib/ngrok';
 import { getApiBaseUrl } from './base-url';
 
 const API_BASE = getApiBaseUrl();
@@ -6,7 +5,6 @@ const API_BASE = getApiBaseUrl();
 function jsonApiHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return {
     'Content-Type': 'application/json',
-    ...ngrokSkipHeaders(API_BASE),
     ...extra,
   };
 }

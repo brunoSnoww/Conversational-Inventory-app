@@ -1,64 +1,22 @@
-import type {
-  PowerSyncBackendConnector,
-  RequiredAdditionalConnectionOptions,
-  StreamingSyncImplementation,
-} from '@powersync/common';
-import { PowerSyncContext } from '@powersync/react';
-import {
-  PowerSyncDatabase,
-  WebRemote,
-  WebStreamingSyncImplementation,
-  type WebStreamingSyncImplementationOptions,
-} from '@powersync/web';
+import type { ReactNode } from 'react';
 import {
   createContext,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from 'react';
 
 import { createChatCollection, type ChatCollection } from './chat';
-import { createPowerSyncFetch, InventoryConnector, type AccessTokenProvider } from './connector';
+import { InventoryConnector, type AccessTokenProvider } from './connector';
+import { PowerSyncContext } from '@powersync/react';
+import { PowerSyncDatabase } from '@powersync/web';
+
 import { syncLog } from './logger';
 import { AppSchema } from './schema';
 
 /** Bump when AppSchema or sync config changes — new db filename forces full resync. */
 const SCHEMA_VERSION = 'v7';
-
-/**
- * PowerSync HTTP calls (write-checkpoint) need ngrok-safe routing on Vercel.
- * WebSocket sync still uses the public PowerSync URL from /api/sync/token/.
- */
-class InventoryPowerSyncDatabase extends PowerSyncDatabase {
-  protected generateSyncStreamImplementation(
-    connector: PowerSyncBackendConnector,
-    options: RequiredAdditionalConnectionOptions,
-  ): StreamingSyncImplementation {
-    if (this.resolvedFlags.ssrMode || this.resolvedFlags.enableMultiTabs) {
-      return super.generateSyncStreamImplementation(connector, options);
-    }
-
-    const remote = new WebRemote(connector, this.logger, {
-      fetchImplementation: createPowerSyncFetch(),
-    });
-    const syncOptions: WebStreamingSyncImplementationOptions = {
-      ...(this.options as object),
-      ...options,
-      flags: this.resolvedFlags,
-      adapter: this.bucketStorageAdapter,
-      remote,
-      uploadCrud: async () => {
-        await this.waitForReady();
-        await connector.uploadData(this);
-      },
-      identifier: this.database.name,
-      logger: this.logger,
-    };
-    return new WebStreamingSyncImplementation(syncOptions);
-  }
-}
 
 function dbFilename(userId: string): string {
   return `inv-${SCHEMA_VERSION}-u${userId}.db`;
@@ -127,7 +85,7 @@ export class PowerSyncManager {
     this.initPromise = (async () => {
       this.chatCollection = null;
       const connector = new InventoryConnector(getAccessToken);
-      const instance = new InventoryPowerSyncDatabase({
+      const instance = new PowerSyncDatabase({
         schema: AppSchema,
         database: { dbFilename: dbFilename(userId) },
         flags: { enableMultiTabs: false, useWebWorker: true },

@@ -12,7 +12,7 @@ type AuthMode = 'signin' | 'signup';
 
 const DEMO_SIGN_IN = {
   email: 'demo@inventory.local',
-  password: 'KaizntreeDemo1!',
+  password: 'password123',
 } as const;
 
 export function LoginPage() {

@@ -13,7 +13,6 @@ import { useDisclosure } from '@mantine/hooks';
 import type { Icon } from '@phosphor-icons/react';
 import { NavLink as RouterNavLink, Outlet } from 'react-router-dom';
 
-import kaizntreeLogo from '../assets/kaizntree.png';
 import { useAuth } from '../auth/AuthContext';
 import { navItems, type NavIconId } from '../routes';
 import { APP_NAME, BRAND_FONT, SHELL_GAP, SHELL_PADDING, SHELL_RADIUS, shellTextureStyle } from './theme';
@@ -89,7 +88,6 @@ export function AppShellLayout() {
       <Group justify="space-between" mb={SHELL_GAP} wrap="nowrap" style={{ flexShrink: 0 }}>
         <Group gap="sm" wrap="nowrap">
           <Burger opened={mobileOpened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
-          <img src={kaizntreeLogo} alt="" width={36} height={36} />
           <Title order={3} ff={BRAND_FONT} c="dark" fw={700}>
             {APP_NAME}
           </Title>

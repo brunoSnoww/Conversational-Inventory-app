@@ -102,12 +102,11 @@ CORS_ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
-# Safari (especially iOS) preflights custom headers; ngrok free tier needs this on API calls.
+# Safari (especially iOS) preflights custom headers on PowerSync requests.
 from corsheaders.defaults import default_headers  # noqa: E402
 
 CORS_ALLOW_HEADERS = (
     *default_headers,
-    "ngrok-skip-browser-warning",
     "x-user-agent",
 )
 

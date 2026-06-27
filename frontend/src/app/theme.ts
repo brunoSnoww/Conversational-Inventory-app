@@ -1,6 +1,6 @@
 import { createTheme } from '@mantine/core';
 
-export const APP_NAME = 'Kaizntree';
+export const APP_NAME = 'Inventory';
 
 const SHELL_BG = 'var(--mantine-color-gray-1)';
 export const SHELL_PADDING = 'md';
