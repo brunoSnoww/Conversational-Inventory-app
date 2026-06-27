@@ -7,26 +7,9 @@ no manual refresh, no cache wrangling.
 The architecture follows a battle tested pattern I've run in production: an AI agent writes through
 Postgres, PowerSync replicates the changes, and the UI reacts to the local replica 
 
-**Stack:** Django REST + Postgres · PowerSync · TanStack DB / React · pydantic-ai
+**Stack:** FastAPI + Postgres · PowerSync · TanStack DB / React · pydantic-ai
 
 -----
-
-# Conversational demo
-
-
-
-https://github.com/user-attachments/assets/83355409-345d-436e-b958-1b87327e4600
-
-
-
-https://github.com/user-attachments/assets/bc7b893b-5fb5-4872-ad8d-79c59468e92e
-
-
-
-
-Demo on how to register,purchase,sell and get info on inventory
-
-----
 
 ## Setup
 
@@ -100,7 +83,7 @@ Open **http://localhost:5173**
 |---------|-----|
 | Frontend | http://localhost:5173 |
 | API | http://localhost:8000 |
-| API docs | http://localhost:8000/api/docs/ |
+| API docs | http://localhost:8000/docs |
 | PowerSync | http://localhost:2000 |
 | Postgres (app) | `localhost:5433` |
 
@@ -124,12 +107,12 @@ Wipes the DB volume, re-runs migrations, restarts the stack. Log out and back in
 
 ## Architecture
 
-One write path through Django (validation + ledger), one read path through PowerSync
+One write path through FastAPI (validation + ledger), one read path through PowerSync
 (server → local SQLite → reactive UI). The two never cross: the UI never REST-fetches
 display data, and writes never touch the read cache.
 
 ```
-┌──────────────────────────── BROWSER ────────────────────────────-┐
+┌──────────────────────────── BROWSER ────────────────────────────┐
 │                                                                  │
 │  React UI                                                        │
 │   ├─ useDashboardRead()  ─┐  (hoisted — one subscription on / + /products)
@@ -141,35 +124,38 @@ display data, and writes never touch the read cache.
 │   │                    │                      │    replica       │
 │   │                    └────▲─────────────────┘                  │
 │   │                         │ live queries re-run on any change  │
-│   └─ REST writes            │                                    |
+│   └─ REST writes            │                                    │
 │      (create PO/SO,         │   chat write                       │
 │       product, stock)       │            │                       │
-└─────────┬───────────────────┼────────────┼──────────────────────-┘
+└─────────┬───────────────────┼────────────┼───────────────────────┘
           │ JWT                │ sync       │ CRUD upload
           ▼                    ▼            ▼
    ┌─────────────┐      ┌─────────────┐  POST /api/sync/mutations/
-   │ Django REST │      │  PowerSync  │     (chat_message only)
+   │   FastAPI   │      │  PowerSync  │     (chat_message only)
    │  /api/...   │      │  service    │            │
    │             │      │  :2000      │            ▼
-   │ services/   │      └──────▲──────┘     ┌──────────────┐
-   │ inventory.py│             │ logical    │ pydantic-ai  │
-   └──────┬──────┘             │ replication│ agent (loop) │
-          │ SQL                │            └──────┬───────┘
-          ▼                    │                   │ tools call services/
-   ┌──────────────────────────-┴───────────────────▼──────────────-┐
-   │                     Postgres  (db_inventory)                  │
-   │   product · purchase_order · sales_order · stock_movement     │
-   │   product_financials_summary · chat_message · views           │
-   └──────────────────────────────────────────────────────────────-┘
+   │ app/        │      └──────▲──────┘     ┌──────────────┐
+   │ inventory   │             │ logical    │ pydantic-ai  │
+   │ + sync      │             │ replication│ agent (async)│
+   └──────┬──────┘             │            └──────┬───────┘
+          │                    │                   │ tools call services/
+          │ services/          │                   │
+          │ inventory.py       │                   │
+          ▼                    │                   ▼
+   ┌──────────────────────────┴───────────────────────────────────┐
+   │                     Postgres  (db_inventory)                   │
+   │   product · purchase_order · sales_order · stock_movement      │
+   │   product_financials_summary · chat_message · views            │
+   └────────────────────────────────────────────────────────────────┘
 ```
 
 | Layer | Path | Role |
 |-------|------|------|
-| Schema | `migrations/` | Goose owns DDL; Django models are `managed=False` |
-| REST API | `backend/inventory_api/` | DRF + JWT; validation only, logic in `services/` |
+| Schema | `migrations/` | Goose owns DDL; app never runs migrations |
+| REST API | `backend/app/inventory/` | FastAPI routers + JWT; validation only, logic in `services/` |
 | Domain | `backend/services/inventory.py` | Ledger writes, oversell checks, read models |
 | Agent | `backend/ai/` | pydantic-ai loop, tools, guardrails, runner |
-| Sync (server) | `backend/sync_api/` | Mint PowerSync JWT + upload connector |
+| Sync (server) | `backend/app/sync/` | Mint PowerSync JWT + upload connector |
 | Sync (engine) | `powersync/config.yaml` | Replication, auth, sync streams (edition 3) |
 | Sync (client) | `frontend/src/sync/` | Schema, connector, collections, hooks |
 | UI | `frontend/src/features/` | Mantine tables + chat |
@@ -178,7 +164,7 @@ display data, and writes never touch the read cache.
 
 ## Postgres — data modelling
 
-Schema is in `migrations/` (Goose), applied **before** Django. Django never runs DDL.
+Schema is in `migrations/` (Goose), applied **before** the app starts. The API never runs DDL.
 
 **Event-sourced stock.** There is no `quantity` column on `product`. Stock is an
 append-only ledger:
@@ -242,12 +228,12 @@ queries target **flat tables** — no JOIN/GROUP BY in sync config; aggregation 
 denormalization live on Postgres via triggers.
 
 **Up (client → server).** Reads and writes use different doors on purpose:
-- **Inventory writes** (product, PO, SO, manual stock) go through **Django REST** — they need oversell checks, ledger side effects, and validation that don't belong on the client.
+- **Inventory writes** (product, PO, SO, manual stock) go through **FastAPI REST** — they need oversell checks, ledger side effects, and validation that don't belong on the client.
 - **Chat writes** ride the **PowerSync upload connector**: an optimistic insert into the local `chat_message` collection → `POST /api/sync/mutations/` → the server runs the agent and inserts the assistant reply → it replicates back down.
 
-**Auth.** `POST /api/auth/login/` → Django JWT. `POST /api/sync/token/` mints a short
+**Auth.** `POST /api/auth/login/` → JWT access token. `POST /api/sync/token/` mints a short
 PowerSync JWT (HS256) whose `sub` claim is the user id (`auth.user_id()` in streams). Keys must match
-between `backend/sync_api/jwt.py` and `powersync/config.yaml`.
+between `backend/app/sync/jwt.py` and `powersync/config.yaml`.
 
 **Two Postgres databases.** The app DB (`db_inventory`) holds your tables and logical
 replication. A separate PowerSync DB (`db_powersync`) stores sync buckets and checkpoint
@@ -286,7 +272,7 @@ PowerSync replica (SQLite)
 ## AI — the agent
 
 A pydantic-ai `Agent` (`backend/ai/agent.py`) runs an agentic tool loop in-process inside
-Django. Model is pluggable via `INVENTORY_AGENT_MODEL` (OpenRouter / DeepSeek / Gemini /
+FastAPI (ASGI). Model is pluggable via `INVENTORY_AGENT_MODEL` (OpenRouter / DeepSeek / Gemini /
 OpenAI).
 
 ```
@@ -311,12 +297,10 @@ math — there's a `calculator` tool for arithmetic.
 - *Output figure guard* — if a reply states a number (`$200`, `500 units`, a margin) for a stock/financial question but **no data tool was called this turn**, raise `ModelRetry` with a targeted hint. Forces fresh tool data instead of hallucinated figures.
 - *Write-intent skip* — purchase/sell/register commands bypass the figure guard: the model legitimately narrates "Purchase order created: 100 units…" *after* the tool runs, and the DB only ever changes through the tool anyway.
 
-**Runner** (`backend/ai/runner.py`) — single persistent asyncio loop (pydantic-ai binds
-its httpx client to the first loop it sees; WSGI threads would otherwise each spawn one).
-Maps provider `401`/`429` to friendly chat replies instead of 500s. Upload handler
-persists the user message + thinking placeholder, then **`schedule_coro`** runs the
-agent on the background loop — HTTP returns in under a second; the LLM turn (~20–30s)
-completes asynchronously and the assistant row replicates down.
+**Runner** (`backend/ai/runner.py`) — native async under ASGI; maps provider `401`/`429` to
+friendly chat replies instead of 500s. Upload handler persists the user message + thinking
+placeholder, then **`asyncio.create_task`** runs the agent — HTTP returns in under a second;
+the LLM turn (~20–30s) completes asynchronously and the assistant row replicates down.
 
 See **[Improvements](#improvements-roadmap-to-production-scale)** for the path
 toward production-grade AI orchestration (Temporal, skills, expanded guardrails).
@@ -375,7 +359,7 @@ Deep dives: [AI layer comparison](docs/inventory_vs_octopus_ai.md) · [PowerSync
 | Pattern | Production ideal | Inventory today |
 |---------|------------------|-----------------|
 | Display reads | Local SQLite via PowerSync — **no REST refetch on navigation** | ✅ Same |
-| Write path | Service layer + durable workflows at scale | ✅ Django `services/` + REST; chat via sync mutations |
+| Write path | Service layer + durable workflows at scale | ✅ FastAPI `services/` + REST; chat via sync mutations |
 | Read models | Trigger-maintained summary tables + denormalized sync columns | ✅ `product_financials_summary` + denorm labels |
 | Sync queries | Flat `SELECT … WHERE` per table; no JOIN in stream config | ✅ Mostly; see pagination/window gaps below |
 | Volume control | Session-scoped chat, time partitions, cursor pagination | ⏳ Partial — chat capped at 100 rows |
@@ -412,7 +396,7 @@ workflows, skills, and richer guardrails.
 |----------|------|--------|-------------------|-------|
 | **A** | Tools → `services/inventory.py` facade | ✅ Done | Tools → durable workflow → service API | Single write path for REST + chat |
 | **B** | Figure + write-intent guardrails | ✅ Done | Multi-category output guardrails | Current guardrails cover SKU/profit domain |
-| **C** | Async agent after upload | ✅ Partial | Durable chat-turn workflow | `schedule_coro` — HTTP returns fast; agent still in-process |
+| **C** | Async agent after upload | ✅ Done | Durable chat-turn workflow | `asyncio.create_task` — HTTP returns fast; agent in-process |
 | **D** | Tool idempotency (`tool_guid`) | ✅ Partial | Workflow idempotency keys | PO/SO done; extend to `add_stock`, `register_product` |
 | **E** | Durable chat turn job | ⏳ Planned | Temporal worker + activity | Celery/RQ acceptable in monolith; Temporal if multi-service |
 | **F** | Skills + nested toolsets | ⏳ Planned | Skill-aware, feature-controlled toolsets | When tool count / prompt token cost grows |
@@ -428,7 +412,7 @@ workflows, skills, and richer guardrails.
 
 ### What we explicitly defer (still valid for a portfolio demo)
 
-- Multi-service split (AI worker vs Django API)
+- Multi-service split (AI worker vs FastAPI API)
 - PowerSync Cloud / RS256 JWT production hardening
 - WhatsApp / rich channel message formatting
 - Multi-agent intent routing (inventory uses one solo agent)
@@ -454,5 +438,5 @@ cd backend && pytest        # services, REST, guardrails (skips if Postgres is d
 Guardrail logic and the ledger math each leave a runnable check behind
 (`tests/test_guardrails.py`, `tests/test_services.py`).
 
-API docs: http://localhost:8000/api/docs/ · endpoint list: [backend/README.md](backend/README.md)
+API docs: http://localhost:8000/docs · endpoint list: [backend/README.md](backend/README.md)
 
