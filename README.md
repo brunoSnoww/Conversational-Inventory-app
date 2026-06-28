@@ -1,3 +1,6 @@
+
+
+
 # Inventory
 
 Conversational inventory management for F&B/CPG brands. Chat with an LLM agent
@@ -8,6 +11,12 @@ The architecture follows a battle tested pattern I've run in production: an AI a
 Postgres, PowerSync replicates the changes, and the UI reacts to the local replica 
 
 **Stack:** FastAPI + Postgres · PowerSync · TanStack DB / React · pydantic-ai
+
+https://github.com/user-attachments/assets/ad626f76-4c99-49cb-9c8c-6eb91c83e676
+
+
+https://github.com/user-attachments/assets/5dc28018-f8b4-45fa-9e71-d851375deb75
+
 
 -----
 
