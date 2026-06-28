@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DEMO_EMAIL="demo@inventory.local"
-DEMO_PASSWORD="KaizntreeDemo1!"
+DEMO_PASSWORD="password123"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found"

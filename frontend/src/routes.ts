@@ -19,5 +19,5 @@ export const navItems = [
   { to: routes.purchases, label: 'Purchase Orders', icon: 'purchases' as const },
   { to: routes.sales, label: 'Sales Orders', icon: 'sales' as const },
   { to: routes.activity, label: 'Activity', icon: 'activity' as const },
-  { to: routes.chat, label: 'JP', icon: 'chat' as const },
+  { to: routes.chat, label: 'AI Chat', icon: 'chat' as const },
 ] as const;
